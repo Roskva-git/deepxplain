@@ -11,9 +11,10 @@
 
 # 3. ANALYSIS WITH LIME & SHAP
 ### 3.0 Setting up explainability functions
-### 3.1 LIME explanation setup and prediction functions
-### 3.2 SHAP analysis (if needed)
-### 3.3 Saving explanation results
+### 3.1 Combined LIME and SHAP Analysis
+### 3.2 Save comprehensive analysis to file
+### 3.3 Overall summary
+### 3.4 
 
 
 print("\n")
@@ -113,9 +114,9 @@ def explain_instance(text, model, num_features=10):
     return explanation
 
 print("Functions set up successfully!")
-print("✓ predict_fn() - handles tokenization and prediction")
-print("✓ explainer - LimeTextExplainer with class names")
-print("✓ explain_instance() - generates explanations")
+print("predict_fn() - handles tokenization and prediction")
+print("explainer - LimeTextExplainer with class names")
+print("explain_instance() - generates explanations")
 print()
 
 print("What these functions do:")
@@ -125,7 +126,7 @@ print("  - explain_instance(): Generates feature importance explanations")
 print()
 
 
-## ---- 3.2 Combined LIME and SHAP Analysis ----
+## ---- 3.1 Combined LIME and SHAP Analysis ----
 
 print("\n3.2 COMBINED LIME AND SHAP ANALYSIS WITH RATIONALES")
 print()
@@ -337,7 +338,78 @@ for i, idx in enumerate(sample_indices):
     print(f"LIME plot saved: lime_plot_sample_{i+1}.png")
     print()
 
-# ============ OVERALL SUMMARY ============
+
+
+# ---- 3.2 Save comprehensive analysis to file ----
+
+results_file = f"{TRAINING_OUTPUT_DIR}/lime_analysis_results.txt"
+with open(results_file, 'w', encoding='utf-8') as f:
+    f.write("LIME ANALYSIS RESULTS\n")
+    f.write("=" * 50 + "\n\n")
+    
+    # Re-analyze each sample for the file (or store results during the loop)
+    for i, idx in enumerate(sample_indices):
+        text = test_dataset.texts[idx]
+        true_label = test_dataset.labels[idx]
+        
+        # Get rationales and prediction
+        original_item = data[test_indices[idx]]
+        rationale_1 = original_item.get('rationales annotator 1', 'N/A')
+        rationale_2 = original_item.get('rationales annotator 2', 'N/A')
+        
+        pred_probs = predict_fn([text])[0]
+        pred_label = np.argmax(pred_probs)
+        
+        # LIME analysis
+        lime_explanation = explain_instance(text, model, num_features=8)
+        lime_features = lime_explanation.as_list()
+        
+        f.write(f"SAMPLE {i+1}/3 (Test Index: {idx})\n")
+        f.write("-" * 40 + "\n")
+        f.write(f"Text: {text}\n")
+        f.write(f"True label: {true_label}\n")
+        f.write(f"Predicted: {pred_label} (confidence: {pred_probs[pred_label]:.3f})\n")
+        f.write(f"Human rationale 1: {rationale_1}\n")
+        f.write(f"Human rationale 2: {rationale_2}\n\n")
+        
+        f.write("LIME Features:\n")
+        for j, (feature, weight) in enumerate(lime_features[:5], 1):
+            f.write(f"  {j}. '{feature}': {weight:+.3f}\n")
+        f.write("\n")
+        
+        # Calculate overlap analysis
+        f.write("OVERLAP ANALYSIS:\n")
+        f.write("-" * 20 + "\n")
+        
+        # Get human rationale words
+        rationale_words = set()
+        if rationale_1 != 'N/A':
+            rationale_words.update(rationale_1.lower().split())
+        if rationale_2 != 'N/A':
+            rationale_words.update(rationale_2.lower().split())
+        
+        # Get LIME important words (positive weights = offensive)
+        lime_offensive_words = [word.lower() for word, weight in lime_features if weight > 0]
+        lime_top_words = [word.lower() for word, weight in lime_features[:5]]
+        
+        # Calculate overlaps
+        lime_human_overlap = [word for word in lime_top_words if word in rationale_words]
+        overlap_percentage = len(lime_human_overlap) / max(len(lime_top_words), 1) * 100
+        
+        f.write(f"Human rationale words: {list(rationale_words)}\n")
+        f.write(f"LIME top 5 words: {lime_top_words}\n")
+        f.write(f"LIME offensive words: {lime_offensive_words}\n")
+        f.write(f"Overlap words: {lime_human_overlap}\n")
+        f.write(f"Overlap percentage: {overlap_percentage:.1f}% ({len(lime_human_overlap)}/{len(lime_top_words)})\n")
+        f.write("\n" + "="*50 + "\n\n")
+
+print(f"Detailed analysis saved to: {results_file}")
+
+
+
+
+# ---- 3.3 Overall summary ----
+
 print(f"\n{'='*40}")
 print("OVERALL ANALYSIS SUMMARY")
 print(f"{'='*40}")
