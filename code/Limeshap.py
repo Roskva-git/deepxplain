@@ -12,9 +12,10 @@
 # 3. ANALYSIS WITH LIME & SHAP
 ### 3.0 Setting up explainability functions
 ### 3.1 Calculating faithfulness metrics
-### 3.2 Combined LIME and SHAP Analysis
-### 3.3 Save comprehensive analysis to file
-### 3.4 Overall summary
+### 3.2 Calculating plausibility metrics
+### 3.3 Combined LIME and SHAP Analysis
+### 3.4 Save comprehensive analysis to file
+### 3.5 Overall summary
 
 
 print("\n")
@@ -190,9 +191,59 @@ def calculate_faithfulness_metrics(text, original_probs, lime_features, num_top_
         }
 
 
-## ---- 3.2 Combined LIME and SHAP Analysis ----
 
-print("\n3.2 COMBINED LIME AND SHAP ANALYSIS WITH RATIONALES")
+## ---- 3.2 Calculating plausibility metrics ----
+
+def calculate_plausibility_metrics(lime_features, rationale_1, rationale_2, num_top_features=5):
+    """Calculate plausibility metrics: how well LIME matches human rationales"""
+    
+    # Get top LIME words
+    lime_top_words = [word.lower() for word, weight in lime_features[:num_top_features]]
+    
+    # Get human rationale words
+    human_words = set()
+    if rationale_1 != 'N/A':
+        human_words.update(rationale_1.lower().split())
+    if rationale_2 != 'N/A':
+        human_words.update(rationale_2.lower().split())
+    
+    # Convert to sets for easier calculation
+    lime_set = set(lime_top_words)
+    human_set = human_words
+    
+    # Calculate metrics
+    intersection = lime_set.intersection(human_set)
+    union = lime_set.union(human_set)
+    
+    # Token-level Precision: Of LIME's words, how many match humans?
+    precision = len(intersection) / len(lime_set) if len(lime_set) > 0 else 0
+    
+    # Token-level Recall: Of human words, how many does LIME find?
+    recall = len(intersection) / len(human_set) if len(human_set) > 0 else 0
+    
+    # F1 Score: Harmonic mean of precision and recall
+    f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+    
+    # IOU F1: Intersection over Union
+    iou_f1 = len(intersection) / len(union) if len(union) > 0 else 0
+    
+    return {
+        'precision': precision,
+        'recall': recall,
+        'f1_score': f1_score,
+        'iou_f1': iou_f1,
+        'intersection': list(intersection),
+        'lime_words': lime_top_words,
+        'human_words': list(human_set),
+        'intersection_count': len(intersection),
+        'lime_count': len(lime_set),
+        'human_count': len(human_set)
+    }
+
+
+## ---- 3.3 Combined LIME and SHAP Analysis ----
+
+print("\n3.3 COMBINED LIME AND SHAP ANALYSIS WITH RATIONALES")
 print()
 
 
@@ -404,7 +455,7 @@ for i, idx in enumerate(sample_indices):
 
 
 
-# ---- 3.3 Save comprehensive analysis to file ----
+# ---- 3.4 Save comprehensive analysis to file ----
 
 results_file = f"{TRAINING_OUTPUT_DIR}/lime_analysis_results.txt"
 with open(results_file, 'w', encoding='utf-8') as f:
@@ -467,7 +518,7 @@ with open(results_file, 'w', encoding='utf-8') as f:
         f.write(f"Overlap percentage: {overlap_percentage:.1f}% ({len(lime_human_overlap)}/{len(lime_top_words)})\n")
         f.write("\n" + "="*50 + "\n\n")
 
-        # Add faithfulness metrics
+        # Get faithfulness metrics
         faithfulness = calculate_faithfulness_metrics(text, pred_probs, lime_features)
 
         f.write("FAITHFULNESS METRICS:\n")
@@ -478,28 +529,49 @@ with open(results_file, 'w', encoding='utf-8') as f:
         f.write(f"Without top words: {faithfulness['confidence_without_top']:.3f}\n")
         f.write(f"Only top words: {faithfulness['confidence_only_top']:.3f}\n")
         f.write("\n" + "="*50 + "\n\n")
+        
+        # Get plausibility metrics
+        plausibility = calculate_plausibility_metrics(lime_features, rationale_1, rationale_2)
+        
+        f.write("PLAUSIBILITY METRICS:\n")
+        f.write(f"Token-level Precision: {plausibility['precision']:.3f}\n")
+        f.write(f"Token-level Recall: {plausibility['recall']:.3f}\n")
+        f.write(f"Token-level F1 Score: {plausibility['f1_score']:.3f}\n")
+        f.write(f"IOU F1 Score: {plausibility['iou_f1']:.3f}\n")
+        f.write(f"Intersection words: {plausibility['intersection']}\n")
+        f.write(f"LIME words ({plausibility['lime_count']}): {plausibility['lime_words']}\n")
+        f.write(f"Human words ({plausibility['human_count']}): {plausibility['human_words']}\n")
+        f.write("\n" + "="*50 + "\n\n")
 
 print(f"Detailed analysis saved to: {results_file}")
 
 
-
-# ---- 3.4 Overall summary ----
+# ---- 3.5 Overall summary ----
 
 print(f"\n{'='*40}")
-print("OVERALL ANALYSIS SUMMARY")
+print("LIME EXPLAINABILITY ANALYSIS")
 print(f"{'='*40}")
-print("This analysis compared three explanation approaches:")
-print("1. LIME: Local perturbation-based explanations")
-print("2. SHAP: Game theory-based feature attributions") 
-print("3. Human rationales: Ground truth annotations")
+print("This analysis evaluated LIME explanations using multiple metrics:")
+print("1. LIME: Local perturbation-based explanations for hate speech detection")
+print("2. Human rationales: Ground truth annotations from expert annotators")
+print("3. Faithfulness metrics: How well LIME reflects actual model behavior")
+print("4. Plausibility metrics: How well LIME matches human reasoning")
 print()
-print("Key insights to look for:")
-print("- Do LIME and SHAP agree on important words?")
-print("- Which method better matches human reasoning?")
-print("- Are there systematic differences between methods?")
-print("- Do explanations make sense for the predictions?")
+print("Metrics calculated:")
+print("- Overlap analysis: Direct comparison of LIME vs human word choices")
+print("- Comprehensiveness: Performance drop when removing LIME's important words")
+print("- Sufficiency: Model performance using only LIME's important words")
+print("- Token-level Precision/Recall/F1: How well LIME matches human annotations")
+print("- IOU F1: Intersection over Union of LIME and human word sets")
+print()
+print("Key research questions addressed:")
+print("- Does LIME identify the same offensive words as human annotators?")
+print("- Are LIME explanations faithful to the model's actual decision process?")
+print("- How plausible are LIME explanations from a human perspective?")
+print("- Can LIME help validate hate speech detection model reasoning?")
 print()
 
-print("Combined LIME and SHAP analysis complete!")
-print(f"LIME plots: lime_plot_sample_1.png, lime_plot_sample_2.png, lime_plot_sample_3.png")
-print(f"SHAP plots: shap_plot_sample_1.png, shap_plot_sample_2.png, shap_plot_sample_3.png")
+print("LIME explainability analysis complete!")
+print(f"✓ Visual explanations: lime_plot_sample_1.png, lime_plot_sample_2.png, lime_plot_sample_3.png")
+print(f"✓ Comprehensive analysis: lime_analysis_results.txt")
+print(f"✓ Metrics included: overlap, faithfulness (comprehensiveness/sufficiency), plausibility (precision/recall/F1/IOU)")
