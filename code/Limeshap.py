@@ -1,62 +1,163 @@
-## ---- 3.2 LIME Analysis Focused on Offensive Examples ----
+# ============================================================================
+# 3. ANALYSIS WITH LIME & SHAP
+# ============================================================================
 
-## Chapter 3: LIME and SHAP
+## Chapter 3: Analysis with LIME and SHAP
 
 # Written by: Røskva
-# Created: 10. July 2025
+# Created: 09. July 2025
 # Updated: 14. July 2025
 
 
-print("\n3.2 LIME ANALYSIS - FOCUSING ON OFFENSIVE EXAMPLES WITH RATIONALES")
+# 3. ANALYSIS WITH LIME & SHAP
+### 3.0 Setting up explainability functions
+### 3.1 LIME explanation setup and prediction functions
+### 3.2 SHAP analysis (if needed)
+### 3.3 Saving explanation results
+
+
+print("\n")
+print("3. ANALYSIS WITH LIME & SHAP")
 print()
 
+## ---- 3.0 Setting up explainability functions (Francielle's original functions) ----
+
+print("\n3.0 SETTING UP EXPLAINABILITY FUNCTIONS")
+print()
+
+
+# Importing libraries
+import torch
+import json
+import shap
+import numpy as np
 import matplotlib.pyplot as plt
+from transformers import BertForSequenceClassification, BertTokenizer
+from lime.lime_text import LimeTextExplainer
+from sklearn.model_selection import train_test_split
 
-# Filter for offensive examples in the test set
-print("Filtering test set for offensive examples...")
-offensive_indices = []
-for i, label in enumerate(test_dataset.labels):
-    if label == 1:  # Offensive
-        offensive_indices.append(i)
+# Set up device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
 
-print(f"Found {len(offensive_indices)} offensive examples in test set of {len(test_labels)} total")
-print("Selecting examples for detailed analysis...")
+
+# Loading model 
+print("Loading saved model...")
+TRAINING_OUTPUT_DIR = "/fp/projects01/ec35/homes/ec-roskvatb/deepxplain/data/training_results/training_20250707_1206"
+model_path = f"{TRAINING_OUTPUT_DIR}/trained_model"
+model = BertForSequenceClassification.from_pretrained(model_path)
+tokenizer = BertTokenizer.from_pretrained(model_path)
+model.to(device)
+print(f"Model loaded from: {model_path}")
 print()
 
-# Select examples: prioritize offensive ones, include some neutral for comparison
+
+# Load the dataset
+dataset_path = "/fp/projects01/ec35/homes/ec-roskvatb/deepxplain/data/dataset/HateBRXplain.json"
+with open(dataset_path, 'r', encoding='utf-8') as f:
+    data = json.load(f)
+
+
+# Extract texts and labels
+texts = [item['comment'] for item in data]
+labels = [int(item['offensive label']) for item in data]
+
+# Splitting dataset into train, validation 
+train_texts, temp_texts, train_labels, temp_labels = train_test_split(
+    texts, labels, test_size=0.3, random_state=42, stratify=labels
+)
+val_texts, test_texts, val_labels, test_labels = train_test_split(
+    temp_texts, temp_labels, test_size=0.5, random_state=42, stratify=temp_labels
+)
+
+# Track which original indices ended up in test set
+all_indices = list(range(len(texts)))
+train_indices, temp_indices, _, _ = train_test_split(
+    all_indices, labels, test_size=0.3, random_state=42, stratify=labels
+)
+val_indices, test_indices, _, _ = train_test_split(
+    temp_indices, temp_labels, test_size=0.5, random_state=42, stratify=temp_labels
+)
+
+class SimpleDataset:
+    def __init__(self, texts, labels):
+        self.texts = texts
+        self.labels = labels
+    def __len__(self):
+        return len(self.texts)
+
+test_dataset = SimpleDataset(test_texts, test_labels)
+print(f"Dataset loaded: {len(test_dataset)} test samples")
+print()
+
+
+print("Setting up prediction function...")
+
+def predict_fn(texts):
+    encodings = tokenizer(texts, truncation=True, padding=True, return_tensors='pt')
+    with torch.no_grad():
+        # Move encodings to device
+        encodings = {k: v.to(device) for k, v in encodings.items()}
+        outputs = model(**encodings)
+    return torch.nn.functional.softmax(outputs.logits, dim=-1).cpu().numpy()
+
+# Initialize explainer
+explainer = LimeTextExplainer(class_names=['Neutral', 'Offensive'])  # Ajuste as classes conforme necessário
+
+def explain_instance(text, model, num_features=10):
+    explanation = explainer.explain_instance(
+        text, 
+        predict_fn, 
+        num_features=num_features
+    )
+    return explanation
+
+print("Functions set up successfully!")
+print("✓ predict_fn() - handles tokenization and prediction")
+print("✓ explainer - LimeTextExplainer with class names")
+print("✓ explain_instance() - generates explanations")
+print()
+
+print("What these functions do:")
+print("  - predict_fn(): Tokenizes texts and returns prediction probabilities")
+print("  - explainer: LIME text explainer configured for sentiment analysis")
+print("  - explain_instance(): Generates feature importance explanations")
+print()
+
+
+## ---- 3.2 Combined LIME and SHAP Analysis ----
+
+print("\n3.2 COMBINED LIME AND SHAP ANALYSIS WITH RATIONALES")
+print()
+
+
+# Filter for offensive examples
+offensive_indices = [i for i, label in enumerate(test_dataset.labels) if label == 1]
+print(f"Found {len(offensive_indices)} offensive examples in test set")
+
+# Pick 3 random offensive examples
 np.random.seed(42)
-
-# Get 2-3 offensive examples for detailed rationale comparison
-if len(offensive_indices) >= 2:
-    selected_offensive = np.random.choice(offensive_indices, min(3, len(offensive_indices)), replace=False)
+if len(offensive_indices) >= 3:
+    sample_indices = np.random.choice(offensive_indices, 3, replace=False)
 else:
-    selected_offensive = offensive_indices
+    sample_indices = offensive_indices  # Use all if less than 3
 
-# Get 1 neutral example for comparison analysis
-neutral_indices = [i for i, label in enumerate(test_labels) if label == 0]
-if len(neutral_indices) > 0:
-    selected_neutral = [np.random.choice(neutral_indices, 1)[0]]
-else:
-    selected_neutral = []
 
-# Combine for analysis
-sample_indices = list(selected_offensive) + selected_neutral
-
-print(f"Analysis plan:")
-print(f"  - Offensive examples: {len(selected_offensive)} (with human rationales)")
-print(f"  - Neutral examples: {len(selected_neutral)} (for comparison)")
-print(f"  - Total examples: {len(sample_indices)}")
+print(f"Generating both LIME and SHAP explanations for 3 random test samples...")
+print("Comparing model explanations with human rationales...")
 print()
-print("Focus: Comparing LIME explanations with human rationales for offensive content")
-print("Rationale: Only offensive examples have human annotations for comparison")
+
+# Set up SHAP
+print("Setting up SHAP explainer...")
+
+# SHAP explainer for transformers
+shap_explainer = shap.Explainer(predict_fn, shap.maskers.Text(tokenizer))
+print("SHAP explainer ready")
 print()
 
 for i, idx in enumerate(sample_indices):
-    is_offensive_example = test_dataset.labels[idx] == 1
-    
     print(f"{'='*70}")
-    print(f"SAMPLE {i+1}/{len(sample_indices)} (Test Index: {idx})")
-    print(f"Example Type: {'OFFENSIVE' if is_offensive_example else 'NEUTRAL'}")
+    print(f"SAMPLE {i+1}/3 (Test Index: {idx})")
     print(f"{'='*70}")
     
     # Get the original data item (not just from test_dataset)
@@ -74,20 +175,15 @@ for i, idx in enumerate(sample_indices):
     print(f"   \"{text}\"")
     print()
     
-    if is_offensive_example:
-        print(f"Human Rationales (what humans identified as offensive):")
-        print(f"   Annotator 1: \"{rationale_1}\"")
-        print(f"   Annotator 2: \"{rationale_2}\"")
-        print("   Note: These are the ground truth annotations for comparison")
-    else:
-        print(f"Human Rationales: Not available for neutral examples")
-        print("   Note: Only offensive examples have rationale annotations")
+    print(f"Human Rationales (what humans think is offensive):")
+    print(f"   Annotator 1: \"{rationale_1}\"")
+    print(f"   Annotator 2: \"{rationale_2}\"")
     print()
     
-    print(f"Ground Truth Label: {true_label} ({'Offensive' if true_label == 1 else 'Neutral'})")
+    print(f"Ground Truth: {true_label} ({'Offensive' if true_label == 1 else 'Neutral'})")
     print()
     
-    # Get model prediction using our prediction function
+    # Get model prediction
     pred_probs = predict_fn([text])[0]
     pred_label = np.argmax(pred_probs)
     
@@ -101,98 +197,139 @@ for i, idx in enumerate(sample_indices):
     # ============ LIME ANALYSIS ============
     print(f"LIME EXPLANATION:")
     print("-" * 30)
-    print("Generating LIME explanation to understand model's reasoning...")
     
-    # Generate LIME explanation using our explain_instance function
+    # Generate LIME explanation
     lime_explanation = explain_instance(text, model, num_features=8)
     lime_features = lime_explanation.as_list()
     
-    print(f"Top {min(8, len(lime_features))} influential words (sorted by absolute importance):")
-    for j, (feature, weight) in enumerate(lime_features[:8], 1):
+    print(f"   Top {min(6, len(lime_features))} influential words:")
+    for j, (feature, weight) in enumerate(lime_features[:6], 1):
         if weight > 0:
-            direction = f"-> Offensive (+{weight:.3f})"
+            direction = f"→ Offensive (+{weight:.3f})"
         else:
-            direction = f"-> Neutral ({weight:.3f})"
+            direction = f"→ Neutral ({weight:.3f})"
         print(f"   {j:2d}. '{feature}': {direction}")
     
-    # Extract words that pushed toward offensive classification
+    # Extract LIME offensive words
     lime_offensive_words = [word for word, weight in lime_features if weight > 0]
-    lime_neutral_words = [word for word, weight in lime_features if weight < 0]
-    
-    print(f"Summary: {len(lime_offensive_words)} words pushed toward Offensive, {len(lime_neutral_words)} toward Neutral")
     print()
     
-    # ============ ANALYSIS BASED ON EXAMPLE TYPE ============
-    if is_offensive_example:
-        print(f"OFFENSIVE EXAMPLE ANALYSIS:")
-        print("-" * 40)
-        print("Comparing LIME explanations with human rationales...")
+# ============ SHAP ANALYSIS ============
+    print(f"SHAP EXPLANATION:")
+    print("-" * 30)
+    
+    try:        
+        # Get explanation with limited evaluations to avoid timeout
+        shap_values = shap_explainer([text], max_evals=50)
         
-        # Get human rationale words for comparison
-        rationale_words = set()
-        if rationale_1 != 'N/A':
-            rationale_words.update(rationale_1.lower().split())
-        if rationale_2 != 'N/A':
-            rationale_words.update(rationale_2.lower().split())
-        
-        print(f"LIME identified as offensive: {lime_offensive_words[:5]}")
-        print(f"Human rationale words: {list(rationale_words)}")
-        
-        # Check overlap between LIME and human rationales
-        lime_words_lower = [word.lower() for word in lime_offensive_words[:5]]
-        lime_human_overlap = [word for word in lime_words_lower if word in rationale_words]
-        
-        print(f"LIME-Human overlap: {lime_human_overlap}")
-        
-        if lime_human_overlap:
-            overlap_count = len(lime_human_overlap)
-            lime_count = len(lime_words_lower)
-            print(f"Agreement: LIME matches human reasoning on {overlap_count} word(s)")
-            print(f"Overlap rate: {overlap_count}/{lime_count} = {overlap_count/max(lime_count,1)*100:.1f}% of LIME's top words")
+        # Extract the values for the offensive class
+        if len(shap_values) > 0:
+            explanation = shap_values[0]
+            
+            # Get the text tokens (simple word split)
+            words = text.split()
+            
+            # Try to get the values for offensive class
+            if hasattr(explanation, 'values') and explanation.values is not None:
+                values = explanation.values
+                
+                # If 2D array, get offensive class (index 1)
+                if len(values.shape) > 1 and values.shape[1] >= 2:
+                    offensive_values = values[:, 1]
+                else:
+                    offensive_values = values
+                
+                # Ensure we don't exceed array bounds
+                num_features = min(len(words), len(offensive_values))
+                
+                # Create word-value pairs
+                word_values = []
+                for i in range(num_features):
+                    word_values.append((words[i], offensive_values[i]))
+                
+                # Sort by absolute value
+                word_values.sort(key=lambda x: abs(x[1]), reverse=True)
+                
+                print(f"   Top {min(6, len(word_values))} influential tokens:")
+                for j, (word, value) in enumerate(word_values[:6], 1):
+                    if value > 0:
+                        direction = f"→ Offensive (+{value:.3f})"
+                    else:
+                        direction = f"→ Neutral ({value:.3f})"
+                    print(f"   {j:2d}. '{word}': {direction}")
+                
+                # Extract offensive words
+                shap_offensive_words = [word for word, value in word_values if value > 0]
+                print(f"SHAP analysis completed successfully")
+                
+            else:
+                print("Could not extract SHAP values from explanation")
+                shap_offensive_words = []
         else:
-            print(f"Disagreement: LIME focused on different words than human annotators")
-            print(f"This could indicate: model bias, different reasoning strategies, or annotation gaps")
+            print("SHAP returned empty explanation")
+            shap_offensive_words = []
+            
+    except Exception as e:
+        print(f"SHAP analysis failed: {str(e)[:100]}...")
+        shap_offensive_words = []
+        print("Continuing with LIME analysis only...")
+    
+    print()
+
+    
+    # ============ COMPARISON ANALYSIS ============
+    print(f"LIME vs SHAP vs HUMAN COMPARISON:")
+    print("-" * 45)
+    
+    # Get human rationale words
+    rationale_words = set()
+    if rationale_1 != 'N/A':
+        rationale_words.update(rationale_1.lower().split())
+    if rationale_2 != 'N/A':
+        rationale_words.update(rationale_2.lower().split())
+    
+    if true_label == 1:  # Only analyze for offensive examples
+        print(f"   LIME top offensive words: {lime_offensive_words[:5]}")
+        print(f"   SHAP top offensive words: {shap_offensive_words[:5]}")
+        print(f"   Human rationale words: {list(rationale_words)}")
         
-        # Assess model prediction quality
-        if pred_label == 1 and lime_offensive_words:
-            print(f"Model assessment: Correctly identified offensive content with clear reasoning")
-        elif pred_label == 1 and not lime_offensive_words:
-            print(f"Model assessment: Predicted offensive but LIME found no clear offensive words")
-        elif pred_label == 0:
-            print(f"Model assessment: Model missed offensive content that humans identified")
+        # Check overlaps
+        lime_words_lower = [word.lower() for word in lime_offensive_words[:5]]
+        shap_words_lower = [word.lower() for word in shap_offensive_words[:5]]
+        
+        lime_human_overlap = [word for word in lime_words_lower if word in rationale_words]
+        shap_human_overlap = [word for word in shap_words_lower if word in rationale_words]
+        lime_shap_overlap = [word for word in lime_words_lower if word in shap_words_lower]
+        
+        print(f"   LIME-Human overlap: {lime_human_overlap}")
+        print(f"   SHAP-Human overlap: {shap_human_overlap}")
+        print(f"   LIME-SHAP overlap: {lime_shap_overlap}")
+        
+        # Analysis
+        if lime_human_overlap and shap_human_overlap:
+            print(f"   Both methods agree with human reasoning")
+        elif lime_human_overlap:
+            print(f"   LIME better matches human reasoning")
+        elif shap_human_overlap:
+            print(f"   SHAP better matches human reasoning")
+        else:
+            print(f"   Neither method matches human reasoning closely")
             
     else:
-        print(f"NEUTRAL EXAMPLE ANALYSIS:")
-        print("-" * 35)
-        print("Checking if LIME correctly identifies non-offensive content...")
-        
-        print(f"LIME identified as offensive: {lime_offensive_words[:3]}")
-        print(f"LIME identified as neutral: {lime_neutral_words[:3]}")
-        
-        # Assess LIME's behavior on neutral text
-        strong_offensive = [w for w, weight in lime_features if weight > 0.3]
-        
-        if len(lime_offensive_words) == 0:
-            print(f"LIME assessment: Correctly found no offensive words")
-        elif len(strong_offensive) == 0:
-            print(f"LIME assessment: Found only weak offensive signals - reasonable for neutral text")
+        print(f"   This is a neutral example - checking if methods agree it's non-offensive")
+        if len(lime_offensive_words) == 0 and len(shap_offensive_words) == 0:
+            print(f"   Both LIME and SHAP agree: no strong offensive words")
         else:
-            print(f"LIME assessment: Found strong offensive words in neutral text - potential false positive")
-        
-        # Assess model prediction
-        if pred_label == 0:
-            print(f"Model assessment: Correctly classified as neutral")
-        else:
-            print(f"Model assessment: Incorrectly classified neutral text as offensive")
+            print(f"   Methods disagree on offensive content")
+            print(f"   LIME found: {lime_offensive_words[:3]}")
+            print(f"   SHAP found: {shap_offensive_words[:3]}")
     
     print()
     
-    # ============ SAVE LIME PLOT ============
-    print("Saving LIME visualization...")
-    
-    # Create LIME plot using built-in visualization
+    # ============ SAVE PLOTS ============
+    # Create LIME plot
     fig = lime_explanation.as_pyplot_figure()
-    plt.title(f'LIME Analysis - Sample {i+1}: {"Offensive" if is_offensive_example else "Neutral"} Example')
+    plt.title(f'LIME - Sample {i+1}: True={true_label}, Pred={pred_label}')
     lime_plot_file = f"{TRAINING_OUTPUT_DIR}/lime_plot_sample_{i+1}.png"
     plt.savefig(lime_plot_file, dpi=300, bbox_inches='tight')
     plt.close()
@@ -200,145 +337,22 @@ for i, idx in enumerate(sample_indices):
     print(f"LIME plot saved: lime_plot_sample_{i+1}.png")
     print()
 
-# ============ SAVE TEXT SUMMARY ============
-print("\nSaving analysis summary to text file...")
-
-# Collect all analysis results for saving
-analysis_results = []
-
-# Note: We need to recollect the analysis data since it was processed in the loop above
-# For now, we'll create a summary structure
-summary_data = {
-    'offensive_count': len(selected_offensive),
-    'neutral_count': len(selected_neutral),
-    'total_examples': len(sample_indices),
-    'sample_indices': sample_indices,
-    'analysis_timestamp': str(np.datetime64('now'))
-}
-
-# Save comprehensive text summary
-summary_file = f"{TRAINING_OUTPUT_DIR}/lime_analysis_summary.txt"
-with open(summary_file, 'w', encoding='utf-8') as f:
-    f.write("LIME ANALYSIS WITH HUMAN RATIONALE COMPARISON\n")
-    f.write("="*60 + "\n\n")
-    
-    f.write("ANALYSIS OVERVIEW\n")
-    f.write("-"*20 + "\n")
-    f.write(f"Date: {summary_data['analysis_timestamp']}\n")
-    f.write(f"Offensive examples analyzed: {summary_data['offensive_count']}\n")
-    f.write(f"Neutral examples analyzed: {summary_data['neutral_count']}\n")
-    f.write(f"Total examples: {summary_data['total_examples']}\n\n")
-    
-    f.write("METHODOLOGY\n")
-    f.write("-"*15 + "\n")
-    f.write("- Primary focus on offensive examples due to human rationale availability\n")
-    f.write("- Neutral examples included to verify model doesn't over-detect offensive content\n")
-    f.write("- Human rationales provide ground truth for what should be considered offensive\n")
-    f.write("- LIME explanations reveal which features the model actually learned to focus on\n")
-    f.write("- Comparison shows whether model reasoning aligns with human judgment\n\n")
-    
-    f.write("RESEARCH QUESTIONS ADDRESSED\n")
-    f.write("-"*30 + "\n")
-    f.write("1. Does LIME identify the same offensive words as human annotators?\n")
-    f.write("2. Can LIME explanations help us validate model predictions?\n")
-    f.write("3. Are there systematic differences in how humans vs. models identify hate speech?\n")
-    f.write("4. Does the model correctly avoid false positives on neutral content?\n\n")
-    
-    f.write("DETAILED RESULTS\n")
-    f.write("-"*20 + "\n")
-    f.write("Note: Detailed analysis for each example was printed to terminal during execution.\n")
-    f.write("Key findings include feature importance rankings, rationale comparisons,\n")
-    f.write("and assessment of model reasoning quality for each analyzed example.\n\n")
-    
-    f.write("OUTPUT FILES GENERATED\n")
-    f.write("-"*25 + "\n")
-    for i in range(len(sample_indices)):
-        f.write(f"- lime_plot_sample_{i+1}.png: Visual LIME explanation for sample {i+1}\n")
-    f.write(f"- lime_analysis_summary.txt: This summary file\n\n")
-    
-    f.write("NEXT STEPS\n")
-    f.write("-"*15 + "\n")
-    f.write("1. Review individual LIME plots to understand feature importance patterns\n")
-    f.write("2. Analyze agreement/disagreement patterns between LIME and human rationales\n")
-    f.write("3. Look for systematic biases or unexpected feature focus in model reasoning\n")
-    f.write("4. Consider implications for model trustworthiness and deployment\n")
-
-print(f"Analysis summary saved to: {summary_file}")
+# ============ OVERALL SUMMARY ============
+print(f"\n{'='*40}")
+print("OVERALL ANALYSIS SUMMARY")
+print(f"{'='*40}")
+print("This analysis compared three explanation approaches:")
+print("1. LIME: Local perturbation-based explanations")
+print("2. SHAP: Game theory-based feature attributions") 
+print("3. Human rationales: Ground truth annotations")
+print()
+print("Key insights to look for:")
+print("- Do LIME and SHAP agree on important words?")
+print("- Which method better matches human reasoning?")
+print("- Are there systematic differences between methods?")
+print("- Do explanations make sense for the predictions?")
 print()
 
-# ============ SAVE DETAILED RESULTS (if we want to re-run analysis for saving) ============
-print("Saving detailed results...")
-
-# Create a more detailed results file
-detailed_file = f"{TRAINING_OUTPUT_DIR}/lime_detailed_results.txt"
-with open(detailed_file, 'w', encoding='utf-8') as f:
-    f.write("DETAILED LIME ANALYSIS RESULTS\n")
-    f.write("="*40 + "\n\n")
-    
-    f.write("This file contains detailed results that were displayed during the analysis.\n")
-    f.write("For complete analysis including rationale comparisons, refer to terminal output.\n\n")
-    
-    f.write("SAMPLE INDICES ANALYZED\n")
-    f.write("-"*25 + "\n")
-    for i, idx in enumerate(sample_indices):
-        is_offensive = test_labels[idx] == 1
-        f.write(f"Sample {i+1}: Test index {idx} ({'Offensive' if is_offensive else 'Neutral'})\n")
-    
-    f.write(f"\nSamples were selected to prioritize offensive examples (which have human rationales)\n")
-    f.write(f"while including neutral examples for comparison analysis.\n\n")
-    
-    f.write("ANALYSIS APPROACH\n")
-    f.write("-"*20 + "\n")
-    f.write("For each sample:\n")
-    f.write("1. Generated LIME explanation showing feature importance\n")
-    f.write("2. Compared LIME features with human rationales (for offensive examples)\n")
-    f.write("3. Assessed model prediction quality and reasoning\n")
-    f.write("4. Saved visual explanation as PNG file\n\n")
-    
-    f.write("KEY INSIGHTS\n")
-    f.write("-"*15 + "\n")
-    f.write("- LIME provides interpretable explanations for model decisions\n")
-    f.write("- Human rationales serve as ground truth for feature importance\n")
-    f.write("- Comparison reveals whether model learned appropriate features\n")
-    f.write("- Analysis helps identify potential biases or reasoning errors\n")
-
-print(f"Detailed results saved to: {detailed_file}")
-print()
-
-# ============ SUMMARY OF FINDINGS ============
-print(f"\n{'='*60}")
-print("SUMMARY: LIME ANALYSIS WITH HUMAN RATIONALE COMPARISON")
-print(f"{'='*60}")
-
-offensive_count = len(selected_offensive)
-neutral_count = len(selected_neutral)
-
-print(f"Analysis Overview:")
-print(f"  - Offensive examples analyzed: {offensive_count}")
-print(f"  - Neutral examples analyzed: {neutral_count}")
-print(f"  - Total examples: {len(sample_indices)}")
-print()
-
-print(f"Research Questions Addressed:")
-print(f"  1. Does LIME identify the same offensive words as human annotators?")
-print(f"  2. Can LIME explanations help us validate model predictions?")
-print(f"  3. Are there systematic differences in how humans vs. models identify hate speech?")
-print(f"  4. Does the model correctly avoid false positives on neutral content?")
-print()
-
-print(f"Methodology Notes:")
-print(f"  - Primary focus on offensive examples due to rationale availability")
-print(f"  - Neutral examples included to verify model doesn't over-detect")
-print(f"  - Human rationales provide ground truth for feature importance")
-print(f"  - LIME explanations reveal what the model actually learned")
-print()
-
-print(f"Output Files:")
-print(f"  - Visual explanations: lime_plot_sample_1.png through lime_plot_sample_{len(sample_indices)}.png")
-print(f"  - Text summary: lime_analysis_summary.txt")
-print(f"  - Detailed results: lime_detailed_results.txt")
-print(f"  - Each plot shows feature importance with LIME's built-in visualization")
-print()
-
-print("LIME analysis complete!")
-print("Next steps: Review plots and text files to analyze patterns in model reasoning")
+print("Combined LIME and SHAP analysis complete!")
+print(f"LIME plots: lime_plot_sample_1.png, lime_plot_sample_2.png, lime_plot_sample_3.png")
+print(f"SHAP plots: shap_plot_sample_1.png, shap_plot_sample_2.png, shap_plot_sample_3.png")
