@@ -11,10 +11,10 @@
 
 # 3. ANALYSIS WITH LIME & SHAP
 ### 3.0 Setting up explainability functions
-### 3.1 Combined LIME and SHAP Analysis
-### 3.2 Save comprehensive analysis to file
-### 3.3 Overall summary
-### 3.4 
+### 3.1 Calculating faithfulness metrics
+### 3.2 Combined LIME and SHAP Analysis
+### 3.3 Save comprehensive analysis to file
+### 3.4 Overall summary
 
 
 print("\n")
@@ -126,7 +126,71 @@ print("  - explain_instance(): Generates feature importance explanations")
 print()
 
 
-## ---- 3.1 Combined LIME and SHAP Analysis ----
+## ---- 3.1 Calculating faithfulness metrics ----
+
+# Sufficiency and comprehensiveness
+
+def calculate_faithfulness_metrics(text, original_probs, lime_features, num_top_features=3):
+    """Calculate comprehensiveness and sufficiency metrics"""
+    
+    # Get top important words (by absolute weight)
+    top_features = sorted(lime_features, key=lambda x: abs(x[1]), reverse=True)[:num_top_features]
+    top_words = [word for word, weight in top_features]
+    
+    # Split text into words
+    words = text.split()
+    
+    # COMPREHENSIVENESS: Remove top features
+    words_without_top = [word for word in words if word not in top_words]
+    text_without_top = ' '.join(words_without_top) if words_without_top else '[EMPTY]'
+    
+    # SUFFICIENCY: Keep only top features  
+    words_only_top = [word for word in words if word in top_words]
+    text_only_top = ' '.join(words_only_top) if words_only_top else '[EMPTY]'
+    
+    try:
+        # Get predictions for modified texts
+        if text_without_top != '[EMPTY]':
+            probs_without_top = predict_fn([text_without_top])[0]
+        else:
+            probs_without_top = [0.5, 0.5]  # Neutral when empty
+            
+        if text_only_top != '[EMPTY]':
+            probs_only_top = predict_fn([text_only_top])[0]
+        else:
+            probs_only_top = [0.5, 0.5]  # Neutral when empty
+        
+        # Calculate metrics
+        original_confidence = max(original_probs)
+        
+        # Comprehensiveness: How much confidence drops when removing top features
+        confidence_without_top = max(probs_without_top)
+        comprehensiveness = original_confidence - confidence_without_top
+        
+        # Sufficiency: How much confidence is retained with only top features  
+        confidence_only_top = max(probs_only_top)
+        sufficiency = confidence_only_top / original_confidence if original_confidence > 0 else 0
+        
+        return {
+            'comprehensiveness': comprehensiveness,
+            'sufficiency': sufficiency,
+            'text_without_top': text_without_top,
+            'text_only_top': text_only_top,
+            'top_words': top_words,
+            'confidence_original': original_confidence,
+            'confidence_without_top': confidence_without_top,
+            'confidence_only_top': confidence_only_top
+        }
+        
+    except Exception as e:
+        return {
+            'comprehensiveness': 0.0,
+            'sufficiency': 0.0,
+            'error': str(e)
+        }
+
+
+## ---- 3.2 Combined LIME and SHAP Analysis ----
 
 print("\n3.2 COMBINED LIME AND SHAP ANALYSIS WITH RATIONALES")
 print()
@@ -340,7 +404,7 @@ for i, idx in enumerate(sample_indices):
 
 
 
-# ---- 3.2 Save comprehensive analysis to file ----
+# ---- 3.3 Save comprehensive analysis to file ----
 
 results_file = f"{TRAINING_OUTPUT_DIR}/lime_analysis_results.txt"
 with open(results_file, 'w', encoding='utf-8') as f:
@@ -403,12 +467,23 @@ with open(results_file, 'w', encoding='utf-8') as f:
         f.write(f"Overlap percentage: {overlap_percentage:.1f}% ({len(lime_human_overlap)}/{len(lime_top_words)})\n")
         f.write("\n" + "="*50 + "\n\n")
 
+        # Add faithfulness metrics
+        faithfulness = calculate_faithfulness_metrics(text, pred_probs, lime_features)
+
+        f.write("FAITHFULNESS METRICS:\n")
+        f.write(f"Comprehensiveness: {faithfulness['comprehensiveness']:.3f}\n")
+        f.write(f"Sufficiency: {faithfulness['sufficiency']:.3f}\n")
+        f.write(f"Top words used: {faithfulness['top_words']}\n")
+        f.write(f"Original confidence: {faithfulness['confidence_original']:.3f}\n")
+        f.write(f"Without top words: {faithfulness['confidence_without_top']:.3f}\n")
+        f.write(f"Only top words: {faithfulness['confidence_only_top']:.3f}\n")
+        f.write("\n" + "="*50 + "\n\n")
+
 print(f"Detailed analysis saved to: {results_file}")
 
 
 
-
-# ---- 3.3 Overall summary ----
+# ---- 3.4 Overall summary ----
 
 print(f"\n{'='*40}")
 print("OVERALL ANALYSIS SUMMARY")
