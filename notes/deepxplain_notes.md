@@ -43,6 +43,8 @@
 
 ## Hate speech
 
+**What is the definition of hate speech?** Is there a difference between hate speech and offensive language?
+
 Introducing the HateXplain dataset, with a mission to reduce unintended bias toward communities who are targets of hate speech, by incorporating human rationales behind hate speech classification (Mathew et al., 2021)
 
 - Problems with the dataset: Annotated by Mturk workers. Inter-rater agreement of 0.46, and we found many instances that were wrong.
@@ -70,6 +72,8 @@ What is attended in BERT? Which tokens are attended, 61,7% attention on CLS. BER
 3. **There are well-known metrics to evaluate improvements in model performance, but how can we measure gains in interpretability?** How do we evaluate the quality of the explanations? (e.g., *Faithfulness*: comprehensiveness, sufficiency; *Plausibility*: IOU F1-score, token-level precision, recall, and F1-score).
 
 4. **We need to discuss the assumptions we are making about our research. Why are we doing this at all?**
+
+5. **SHAP and LIME are defined as post-hoc explanation methods, but our approach may be considered inherently explaining or self-explaining.** What’s the difference between these two types of approaches? Also, what are the advantages and disadvantages of using each?
 
 Imposing human based rationales on statistical learning models can arguably be necessary with the types of classifications we are making in this project. Hate speech is defined by what sort of values we have in society, it is a fluent property and not an objective truth. By having human annotators single out the words that make a text offensive or inoffensive, we have a greater chance of making our models pick up on the right cues for what makes a specific utterance hateful. We can avoid more random rationales that often come with machine learning because they are good at picking up any pattern, even ones that we don't see as meaningful. This is an advantage in some settings, but when it comes to value-based choices, we need to be in control of the rationales.
 
