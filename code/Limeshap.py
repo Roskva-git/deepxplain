@@ -1,12 +1,8 @@
-# ============================================================================
-# 3. ANALYSIS WITH LIME & SHAP
-# ============================================================================
-
 ## Chapter 3: Analysis with LIME and SHAP
 
 # Written by: Røskva
 # Created: 09. July 2025
-# Updated: 14. July 2025
+# Updated: 15. July 2025
 
 
 # 3. ANALYSIS WITH LIME & SHAP
@@ -14,8 +10,9 @@
 ### 3.1 Calculating faithfulness metrics
 ### 3.2 Calculating plausibility metrics
 ### 3.3 Combined LIME and SHAP Analysis
-### 3.4 Save comprehensive analysis to file
-### 3.5 Overall summary
+### 3.4 Population-level statistics
+### 3.5 Save comprehensive analysis to file
+### 3.6 Overall summary
 
 
 print("\n")
@@ -45,7 +42,7 @@ print(f"Using device: {device}")
 
 # Loading model 
 print("Loading saved model...")
-TRAINING_OUTPUT_DIR = "/fp/projects01/ec35/homes/ec-roskvatb/deepxplain/data/training_results/training_20250707_1206"
+TRAINING_OUTPUT_DIR = "/fp/projects01/ec35/homes/ec-roskvatb/deepxplain/data/training_results/training_20250708_1500"
 model_path = f"{TRAINING_OUTPUT_DIR}/trained_model"
 model = BertForSequenceClassification.from_pretrained(model_path)
 tokenizer = BertTokenizer.from_pretrained(model_path)
@@ -96,12 +93,28 @@ print()
 print("Setting up prediction function...")
 
 def predict_fn(texts):
-    encodings = tokenizer(texts, truncation=True, padding=True, return_tensors='pt')
-    with torch.no_grad():
-        # Move encodings to device
-        encodings = {k: v.to(device) for k, v in encodings.items()}
-        outputs = model(**encodings)
-    return torch.nn.functional.softmax(outputs.logits, dim=-1).cpu().numpy()
+    """Batched prediction function to avoid memory overflow"""
+    batch_size = 8  # Reduce this if still getting OOM
+    all_results = []
+    
+    for i in range(0, len(texts), batch_size):
+        batch_texts = texts[i:i+batch_size]
+        
+        # Process batch
+        encodings = tokenizer(batch_texts, truncation=True, padding=True, return_tensors='pt')
+        
+        with torch.no_grad():
+            # Move encodings to device
+            encodings = {k: v.to(device) for k, v in encodings.items()}
+            outputs = model(**encodings)
+            batch_probs = torch.nn.functional.softmax(outputs.logits, dim=-1).cpu().numpy()
+            all_results.extend(batch_probs)
+            
+        # Clear cache after each batch
+        torch.cuda.empty_cache()
+    
+    return np.array(all_results)
+
 
 # Initialize explainer
 explainer = LimeTextExplainer(class_names=['Neutral', 'Offensive'])  # Ajuste as classes conforme necessário
@@ -454,8 +467,112 @@ for i, idx in enumerate(sample_indices):
     print()
 
 
+# ---- 3.4 Population-Level Statistics ----
 
-# ---- 3.4 Save comprehensive analysis to file ----
+print("\n3.4 CALCULATING POPULATION-LEVEL STATISTICS")
+print("=" * 60)
+print("Running LIME analysis on all offensive examples for robust statistics...")
+print()
+
+# Storage for population metrics
+all_faithfulness_metrics = []
+all_plausibility_metrics = []
+all_overlap_percentages = []
+
+# Run LIME on ALL offensive examples (silently)
+for i, idx in enumerate(offensive_indices):
+    # Progress tracking
+    if i % 100 == 0:
+        print(f"Processing sample {i+1}/{len(offensive_indices)}...")
+        # Clear memory every 100 samples
+        torch.cuda.empty_cache()
+    
+    # Get data for this sample
+    text = test_dataset.texts[idx]
+    true_label = test_dataset.labels[idx]
+    original_item = data[test_indices[idx]]
+    rationale_1 = original_item.get('rationales annotator 1', 'N/A')
+    rationale_2 = original_item.get('rationales annotator 2', 'N/A')
+    
+    # Get prediction and LIME analysis
+    pred_probs = predict_fn([text])[0]
+    pred_label = np.argmax(pred_probs)
+    lime_explanation = explain_instance(text, model, num_features=8)
+    lime_features = lime_explanation.as_list()
+    
+    # Calculate metrics
+    faithfulness = calculate_faithfulness_metrics(text, pred_probs, lime_features)
+    plausibility = calculate_plausibility_metrics(lime_features, rationale_1, rationale_2)
+    
+    # Calculate overlap percentage
+    rationale_words = set()
+    if rationale_1 != 'N/A':
+        rationale_words.update(rationale_1.lower().split())
+    if rationale_2 != 'N/A':
+        rationale_words.update(rationale_2.lower().split())
+    lime_top_words = [word.lower() for word, weight in lime_features[:5]]
+    lime_human_overlap = [word for word in lime_top_words if word in rationale_words]
+    overlap_percentage = len(lime_human_overlap) / max(len(lime_top_words), 1) * 100
+    
+    # Store all metrics
+    all_faithfulness_metrics.append(faithfulness)
+    all_plausibility_metrics.append(plausibility)
+    all_overlap_percentages.append(overlap_percentage)
+
+    # Clear memory periodically
+    if i % 10 == 0:  # Every 10 samples
+        torch.cuda.empty_cache()
+
+print(f"Completed analysis on {len(offensive_indices)} samples!")
+print()
+
+# Calculate aggregate statistics
+comprehensiveness_scores = [m['comprehensiveness'] for m in all_faithfulness_metrics]
+sufficiency_scores = [m['sufficiency'] for m in all_faithfulness_metrics]
+precision_scores = [m['precision'] for m in all_plausibility_metrics]
+recall_scores = [m['recall'] for m in all_plausibility_metrics]
+f1_scores = [m['f1_score'] for m in all_plausibility_metrics]
+iou_scores = [m['iou_f1'] for m in all_plausibility_metrics]
+
+
+# Coverage metrics
+
+# Check if LIME found any offensive words (positive weights)
+lime_offensive_counts = []
+for i, idx in enumerate(offensive_indices):
+    lime_explanation = explain_instance(test_dataset.texts[idx], model, num_features=8) 
+    lime_features = lime_explanation.as_list()
+    offensive_words = [word for word, weight in lime_features if weight > 0]
+    lime_offensive_counts.append(len(offensive_words))
+    
+samples_with_lime_offensive = sum(1 for count in lime_offensive_counts if count > 0)
+samples_with_overlap = sum(1 for p in all_overlap_percentages if p > 0)
+samples_with_good_agreement = sum(1 for f1 in f1_scores if f1 > 0.5)
+
+# Display results
+print("POPULATION-LEVEL STATISTICS")
+print("=" * 40)
+print(f"Total samples analyzed: {len(offensive_indices)}")
+print()
+print("FAITHFULNESS METRICS:")
+print(f"  Comprehensiveness: {np.mean(comprehensiveness_scores):.3f} ± {np.std(comprehensiveness_scores):.3f}")
+print(f"  Sufficiency: {np.mean(sufficiency_scores):.3f} ± {np.std(sufficiency_scores):.3f}")
+print()
+print("PLAUSIBILITY METRICS:")
+print(f"  Token-level Precision: {np.mean(precision_scores):.3f} ± {np.std(precision_scores):.3f}")
+print(f"  Token-level Recall: {np.mean(recall_scores):.3f} ± {np.std(recall_scores):.3f}")
+print(f"  Token-level F1: {np.mean(f1_scores):.3f} ± {np.std(f1_scores):.3f}")
+print(f"  IOU F1: {np.mean(iou_scores):.3f} ± {np.std(iou_scores):.3f}")
+print(f"  Overall agreement rate (F1>0.5): {samples_with_good_agreement}/{len(f1_scores)} ({samples_with_good_agreement/len(f1_scores)*100:.1f}%)")
+print()
+print("COVERAGE METRICS:")
+print(f"  Samples with any human-LIME overlap: {samples_with_overlap}/{len(all_overlap_percentages)} ({samples_with_overlap/len(all_overlap_percentages)*100:.1f}%)")
+print(f"  Average overlap percentage: {np.mean(all_overlap_percentages):.1f}% ± {np.std(all_overlap_percentages):.1f}%")
+print()
+
+
+
+# ---- 3.5 Save comprehensive analysis to file ----
 
 results_file = f"{TRAINING_OUTPUT_DIR}/lime_analysis_results.txt"
 with open(results_file, 'w', encoding='utf-8') as f:
@@ -543,35 +660,70 @@ with open(results_file, 'w', encoding='utf-8') as f:
         f.write(f"Human words ({plausibility['human_count']}): {plausibility['human_words']}\n")
         f.write("\n" + "="*50 + "\n\n")
 
+    # Save population statistics to file
+    f.write("\n" + "="*60 + "\n")
+    f.write("POPULATION-LEVEL STATISTICS\n")
+    f.write("="*60 + "\n\n")
+    f.write(f"Total offensive samples analyzed: {len(offensive_indices)}\n\n")
+    
+    f.write("FAITHFULNESS METRICS (Population):\n")
+    f.write(f"Comprehensiveness: {np.mean(comprehensiveness_scores):.3f} ± {np.std(comprehensiveness_scores):.3f}\n")
+    f.write(f"Sufficiency: {np.mean(sufficiency_scores):.3f} ± {np.std(sufficiency_scores):.3f}\n\n")
+            
+    f.write("PLAUSIBILITY METRICS (Population):\n")
+    f.write(f"Token-level Precision: {np.mean(precision_scores):.3f} ± {np.std(precision_scores):.3f}\n")
+    f.write(f"Token-level Recall: {np.mean(recall_scores):.3f} ± {np.std(recall_scores):.3f}\n")
+    f.write(f"Token-level F1: {np.mean(f1_scores):.3f} ± {np.std(f1_scores):.3f}\n")
+    f.write(f"IOU F1: {np.mean(iou_scores):.3f} ± {np.std(iou_scores):.3f}\n")
+    f.write(f"Overall agreement rate (F1>0.5): {samples_with_good_agreement/len(f1_scores)*100:.1f}%\n\n")
+            
+    f.write("COVERAGE ANALYSIS:\n")
+    f.write(f"Samples with any human-LIME overlap: {samples_with_overlap/len(all_overlap_percentages)*100:.1f}%\n")
+    f.write(f"Average overlap percentage: {np.mean(all_overlap_percentages):.1f}% ± {np.std(all_overlap_percentages):.1f}%\n")
+
 print(f"Detailed analysis saved to: {results_file}")
 
 
-# ---- 3.5 Overall summary ----
+# ---- 3.6 Overall summary ----
 
-print(f"\n{'='*40}")
-print("LIME EXPLAINABILITY ANALYSIS")
-print(f"{'='*40}")
-print("This analysis evaluated LIME explanations using multiple metrics:")
-print("1. LIME: Local perturbation-based explanations for hate speech detection")
-print("2. Human rationales: Ground truth annotations from expert annotators")
-print("3. Faithfulness metrics: How well LIME reflects actual model behavior")
-print("4. Plausibility metrics: How well LIME matches human reasoning")
+print(f"\n{'='*60}")
+print("COMPREHENSIVE LIME EXPLAINABILITY ANALYSIS - COMPLETE")
+print(f"{'='*60}")
+print("This analysis evaluated LIME explanations using both qualitative and quantitative approaches:")
 print()
-print("Metrics calculated:")
-print("- Overlap analysis: Direct comparison of LIME vs human word choices")
-print("- Comprehensiveness: Performance drop when removing LIME's important words")
-print("- Sufficiency: Model performance using only LIME's important words")
-print("- Token-level Precision/Recall/F1: How well LIME matches human annotations")
-print("- IOU F1: Intersection over Union of LIME and human word sets")
+print("ANALYSIS COMPONENTS:")
+print("1. Detailed Case Studies: 3 randomly selected offensive examples with full analysis")
+print("2. Population Statistics: Comprehensive metrics across all 525 offensive examples")
+print("3. Visual Explanations: LIME plots showing feature importance")
+print("4. Comprehensive Results File: All findings saved for further analysis")
 print()
-print("Key research questions addressed:")
-print("- Does LIME identify the same offensive words as human annotators?")
-print("- Are LIME explanations faithful to the model's actual decision process?")
-print("- How plausible are LIME explanations from a human perspective?")
-print("- Can LIME help validate hate speech detection model reasoning?")
+print("METRICS EVALUATED:")
+print("• Faithfulness Metrics:")
+print("  - Comprehensiveness: Performance drop when removing LIME's important words")
+print("  - Sufficiency: Model performance using only LIME's important words")
+print("• Plausibility Metrics:")
+print("  - Token-level Precision/Recall/F1: Agreement with human annotations")
+print("  - IOU F1: Intersection over Union with human rationales")
+print("• Coverage Analysis:")
+print("  - Human-LIME overlap rates and agreement patterns")
+print()
+print("RESEARCH CONTRIBUTIONS:")
+print("• Quantified how well LIME explanations match expert human reasoning")
+print("• Measured explanation faithfulness to actual model decision processes")
+print("• Provided both statistical rigor and interpretable case studies")
+print("• Established baseline metrics for explainable hate speech detection")
 print()
 
-print("LIME explainability analysis complete!")
+print("LIME EXPLAINABILITY ANALYSIS COMPLETE!")
+print("=" * 40)
+print("OUTPUT FILES:")
 print(f"✓ Visual explanations: lime_plot_sample_1.png, lime_plot_sample_2.png, lime_plot_sample_3.png")
 print(f"✓ Comprehensive analysis: lime_analysis_results.txt")
-print(f"✓ Metrics included: overlap, faithfulness (comprehensiveness/sufficiency), plausibility (precision/recall/F1/IOU)")
+print()
+print("METRICS INCLUDED:")
+print(f"✓ Population statistics from {len(offensive_indices)} samples")
+print("✓ Faithfulness: comprehensiveness, sufficiency") 
+print("✓ Plausibility: precision, recall, F1, IOU F1")
+print("✓ Coverage: overlap rates, agreement patterns")
+print()
+print("Next steps: Review results file for detailed findings and population-level insights")
