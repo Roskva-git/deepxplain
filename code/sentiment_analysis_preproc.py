@@ -18,26 +18,6 @@
 ### 1.8 Saving preprocessed data
 
 
-# 2. TRAINING AND FINE-TUNING STEPS
-### 2.0 Device setup and training configuration
-### 2.1
-### 2.2
-### 2.3
-### 2.4
-### 2.5
-###
-###
-
-# 3. ANALYSIS
-### 3.0 
-### 3.1
-### 3.2
-### 3.3
-### 3.4
-### 3.5
-###
-###
-
 
 ## ---- 1.0 Setting up environment and configuration ----  
 
@@ -62,11 +42,11 @@ import os
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
 # Dataset configuration - modify for hatespeech dataset
-DATASET_NAME = "HateBRXplain"           
+DATASET_NAME = "HateBRXplain_cleaned"           
 MODEL_NAME = 'adalbertojunior/distilbert-portuguese-cased'
 MAX_LENGTH = 512
 BATCH_SIZE = 16                  # Change from 8
-NUM_WORKERS = 4                 # Change from 0
+NUM_WORKERS = 0                 # Change from 0
 TEST_SIZE = 0.3                 # Validation split ratio
 RANDOM_STATE = 42
 
@@ -74,80 +54,6 @@ RANDOM_STATE = 42
 timestamp = datetime.now().strftime("%Y%m%d_%H%M")
 BASE_OUTPUT_DIR = "/fp/projects01/ec35/homes/ec-roskvatb/deepxplain/data/preprocessed_data" # Change this as needed
 OUTPUT_DIR = os.path.join(BASE_OUTPUT_DIR, f"{DATASET_NAME}_{MODEL_NAME.replace('/', '_')}_maxlen{MAX_LENGTH}_{timestamp}")
-
-# ---- Check for existing data ----
-
-def check_existing_preprocessing():
-    """Check if similar preprocessing already exists"""
-    if os.path.exists(BASE_OUTPUT_DIR):
-        existing_dirs = [d for d in os.listdir(BASE_OUTPUT_DIR) 
-                        if os.path.isdir(os.path.join(BASE_OUTPUT_DIR, d))]
-        
-        if existing_dirs:
-            print("EXISTING PREPROCESSED DATA FOUND:")
-            for i, dirname in enumerate(existing_dirs, 1):
-                config_path = os.path.join(BASE_OUTPUT_DIR, dirname, "config.json")
-                if os.path.exists(config_path):
-                    with open(config_path, 'r') as f:
-                        config = json.load(f)
-                    print(f"{i}. {dirname}")
-                    print(f"   Dataset: {config.get('dataset_name', 'unknown')}")
-                    print(f"   Max length: {config.get('max_length', 'unknown')}")
-                    print(f"   Batch size: {config.get('batch_size', 'unknown')}")
-                    print(f"   Samples: {config.get('train_size', 'unknown')} train, {config.get('val_size', 'unknown')} val")
-                    print()
-                else:
-                    print(f"{i}. {dirname} (no config.json - incomplete)")
-                    print()                    
-
-# Ask user what to do
-            response = input("Do you want to:\n"
-                           "  n. Continue with new preprocessing (creates new folder)\n"
-                           "  e. Use existing preprocessing (type folder number)\n"
-                           "  n. Cancel\n"
-                           "Enter choice: ").strip()
-            
-            if response == "c":
-                print("Preprocessing cancelled.")
-                return None, True  # Return None and cancel flag
-            elif response.isdigit() and 1 <= int(response) <= len(existing_dirs):
-                selected_dir = existing_dirs[int(response) - 1]
-                existing_path = os.path.join(BASE_OUTPUT_DIR, selected_dir)
-                print(f"Using existing preprocessing: {existing_path}")
-            
-                # Check if config.json exists
-                config_path = os.path.join(existing_path, "config.json")
-                if not os.path.exists(config_path):
-                    print(f"Warning: {config_path} not found. This directory may be incomplete.")
-                    print("Continuing with new preprocessing instead...")
-                    return OUTPUT_DIR, False
-
-                return existing_path, True  # Return path and skip flag
-            elif response == "n":
-                print("Continuing with new preprocessing...")
-                return OUTPUT_DIR, False  # Return new path and continue flag
-            else:
-                print("Invalid choice. Continuing with new preprocessing...")
-                return OUTPUT_DIR, False
-        
-    return OUTPUT_DIR, False
-
-# Check for existing data
-final_output_dir, should_skip = check_existing_preprocessing()
-
-if should_skip and final_output_dir:
-    # Load existing data instead of preprocessing
-    print(f"Loading existing data from: {final_output_dir}")
-    with open(f"{final_output_dir}/config.json", 'r') as f:
-        config = json.load(f)
-    print("Existing preprocessing loaded successfully!")
-    exit(0)  # Exit script since we're using existing data
-
-if final_output_dir is None:
-    exit(1)  # User cancelled
-
-# Continue with preprocessing using final_output_dir
-OUTPUT_DIR = final_output_dir
 
 # Create output directory if it doesn't exist
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -188,7 +94,7 @@ print()
 
 # Loading dataset
 print(f"Loading {DATASET_NAME} dataset...")
-dataset_path = "/fp/projects01/ec35/homes/ec-roskvatb/deepxplain/data/dataset/HateBRXplain.json"
+dataset_path = "/fp/projects01/ec35/homes/ec-roskvatb/deepxplain/data/dataset/HateBRXplain_cleaned.json"
 
 with open(dataset_path, 'r', encoding='utf-8') as f:
     raw_data = json.load(f)
