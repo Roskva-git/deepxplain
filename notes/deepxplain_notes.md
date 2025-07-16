@@ -40,6 +40,8 @@
 - F1 score
 
 **Sentiment analysis**
+**Emoji removal**
+Emoji characters were replaced with whitespace and multiple consecutive spaces were normalized to single spaces to maintain text structure while ensuring SHAP tokenization compatibility.
 
 ## Hate speech
 
