@@ -9,10 +9,15 @@ We are exploring how LIME and SHAP can help explain machine learning models that
 
 ## Files
 - `deepxplain-notes.md` - Research notes, definitions, and reflections
-- `results.csv` - Analysis results and model outputs
+- `documentation_with_emoji.csv` - Analysis results and model outputs for original data
+- `documentation_no_emoji.csv` - Analysis results and model outputs for cleaned data
+- `LIME_comparison table.csv` - Results from LIME analyses
 - `sentiment_analysis_preproc.py` - Code for preprocessing the dataset before sentiment analysis
 - `foxready_sentiment_analysis_training.py` - Code for sentiment analysis
-- `Limeshap.py` - Code for implementing LIME and SHAP
+- `Limeshap.py` - Code for implementing LIME
+- `clear_emojis_from_data.py` - Cleans the orginial dataset for emojis, necessary for SHAP
+- `shapanalysis.py` - Code for implementing SHAP
+
 
 ## Current Status
-Successfully implemented LIME for model explanation. SHAP had technical issues with Portuguese BERT tokenization.
+Successfully implemented LIME for model explanation. SHAP implementation currently in progress. 
