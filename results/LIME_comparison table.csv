@@ -1,0 +1,14 @@
+﻿Population-level statistics,,,,,,,,,,,,
+,,,,,,,,,,,,
+Original dataset,,,,,,,,,,,Faithfulness metrics:,Comprehension and sufficiency
+Model,Comprehensiveness,Sufficiency,Precision,Recall,F1,IOU F1,Agreement rate,Coverage,Overlap,,,
+bert-base-uncased,0.074±0.174,1.019±0.177,0.654±0.279,0.442±0.246,0.498±0.238,0.368±0.232,46.10%,97.90%,65.4% ± 27.9%,,Plausibility metrics: ,"Token-level precision, token-level recall, token-level F1 and IOU F1"
+bertimbau_hate_speech,,,,,,,,,,,,
+distilbert-portuguese-cased,0.050±0.166,0.992±0.175,0.669±0.275,0.449±0.245,0.508±0.236,0.376±0.231,47.40%,98.10%,66.9% ± 27.5%,,Coverage metrics: ,"Agreement rate, coverage (samples with human overlap) and average overlap percentage"
+,,,,,,,,,,,,
+,,,,,,,,,,,,
+Emojis removed,,,,,,,,,,,,
+Model,Comprehensiveness,Sufficiency,Precision,Recall,F1,IOU F1,Agreement rate,Coverage,Overlap,,,
+bert-base-uncased,0.075 ± 0.194,1.039 ± 0.207,0.643 ± 0.290,0.438 ± 0.253,0.492 ± 0.246,0.364 ± 0.237,45.00%,97.00%,64.3% ± 29.0%,,,
+bertimbau_hate_speech,0.046 ± 0.155,0.999 ± 0.144,0.683 ± 0.272,0.458 ± 0.239,0.518 ± 0.230,0.385 ± 0.228,49.30%,99.00%,68.3% ± 27.2%,,,
+distilbert-portuguese-cased,0.067 ± 0.175,0.981 ± 0.160,0.668 ± 0.270,0.453 ± 0.246,0.510 ± 0.234,0.378 ± 0.230,48.60%,98.70%,66.8% ± 27.0%,,,
