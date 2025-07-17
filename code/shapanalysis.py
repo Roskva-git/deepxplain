@@ -16,6 +16,7 @@
 ### 4.5 Analyzing and visualizing results
 ### 4.6 Saving SHAP results
 
+
 ## ---- 4.0 Environment setup and configuration ----
 
 # Importing libraries and tools
@@ -519,44 +520,31 @@ def create_shap_word_plot(word_importance, text, true_label, predicted_label, co
 print("\n4.4 GENERATING SHAP EXPLANATIONS")
 print()
 
-# Select examples for SHAP analysis
-print("Selecting examples for SHAP analysis...")
+# Select ALL OFFENSIVE examples for SHAP analysis (to match LIME analysis)
+print("Selecting ALL offensive examples for SHAP analysis...")
 
-# Choose a diverse set of examples
-analysis_examples = []
-analysis_labels = []
-
-# Get examples from different categories
-neutral_examples = [(text, label) for text, label in zip(test_texts, test_labels) if label == 0]
+# Get all offensive examples from test set
 offensive_examples = [(text, label) for text, label in zip(test_texts, test_labels) if label == 1]
 
-# Select balanced examples
-examples_per_class = 5  # Analyze 5 examples per class
-analysis_examples.extend([text for text, label in neutral_examples[:examples_per_class]])
-analysis_labels.extend([label for text, label in neutral_examples[:examples_per_class]])
-analysis_examples.extend([text for text, label in offensive_examples[:examples_per_class]])
-analysis_labels.extend([label for text, label in offensive_examples[:examples_per_class]])
-
-print(f"Selected {len(analysis_examples)} examples for analysis:")
-print(f"  Neutral examples: {examples_per_class}")
-print(f"  Offensive examples: {examples_per_class}")
+print(f"Found {len(offensive_examples)} offensive examples in test set")
+print("This matches your LIME analysis scope for proper comparison")
 print()
 
-# Generate SHAP explanations
-print("Generating SHAP explanations...")
-print("This will take several minutes. Progress will be shown below.")
+# Generate SHAP explanations for ALL offensive examples
+print("Generating SHAP explanations for all offensive examples...")
+print("This will take 20-30 minutes. Progress will be shown below.")
 print()
 
 shap_results = []
+total_offensive = len(offensive_examples)
 
-for i, (text, true_label) in enumerate(zip(analysis_examples, analysis_labels)):
-    print(f"Processing example {i+1}/{len(analysis_examples)}...")
-    print(f"  Text: {text[:100]}...")
-    print(f"  True label: {'Offensive' if true_label == 1 else 'Neutral'}")
+for i, (text, true_label) in enumerate(offensive_examples):
+    print(f"Processing offensive example {i+1}/{total_offensive}...")
+    print(f"  Text: {text[:80]}...")
     
     try:
-        # Clear GPU cache before each example
-        if torch.cuda.is_available():
+        # Clear GPU cache periodically
+        if i % 50 == 0 and torch.cuda.is_available():
             torch.cuda.empty_cache()
         
         # Get SHAP values
@@ -583,15 +571,18 @@ for i, (text, true_label) in enumerate(zip(analysis_examples, analysis_labels)):
         print(f"  Prediction: {'Offensive' if predicted_class == 1 else 'Neutral'} (confidence: {confidence:.3f})")
         print(f"  Correct: {true_label == predicted_class}")
         print(f"  ✓ SHAP analysis complete")
-        print()
+        
+        # Progress indicator
+        if (i + 1) % 25 == 0:
+            print(f"\n--- Progress: {i+1}/{total_offensive} completed ({(i+1)/total_offensive*100:.1f}%) ---\n")
         
     except Exception as e:
         print(f"  ✗ Error processing example {i+1}: {e}")
         print(f"  Skipping this example...")
-        print()
         continue
 
-print(f"SHAP analysis complete! Successfully processed {len(shap_results)} examples.")
+print(f"\nSHAP analysis complete! Successfully processed {len(shap_results)}/{total_offensive} offensive examples.")
+print(f"Success rate: {len(shap_results)/total_offensive*100:.1f}%")
 print()
 
 
@@ -615,25 +606,37 @@ print("Extracting word-level importance from SHAP values...")
 for i, result in enumerate(shap_results):
     word_importance = extract_word_importance(result['shap_values'], result['text'])
     result['word_importance'] = word_importance
-    
-    print(f"Example {i+1} - Top important words:")
-    for j, word_info in enumerate(word_importance[:5]):  # Show top 5
-        direction = "→ Offensive" if word_info['importance'] > 0 else "→ Neutral"
-        print(f"  {j+1}. '{word_info['word']}': {word_info['importance']:.3f} {direction}")
-    print()
+
+# Select 3 offensive examples for visualization
+print("Selecting 3 offensive examples for visualization...")
+
+# Find offensive examples (label 1) - prioritize correct predictions
+offensive_correct = [i for i, r in enumerate(shap_results) if r['true_label'] == 1 and r['correct_prediction']]
+offensive_incorrect = [i for i, r in enumerate(shap_results) if r['true_label'] == 1 and not r['correct_prediction']]
+
+selected_indices = []
+
+# Select 3 offensive examples (prefer correct predictions)
+all_offensive = offensive_correct + offensive_incorrect
+for i in range(min(3, len(all_offensive))):
+    selected_indices.append(all_offensive[i])
+
+print(f"Selected {len(selected_indices)} offensive examples for visualization")
 
 # Create visualizations directory
 viz_dir = os.path.join(OUTPUT_DIR, "visualizations")
 os.makedirs(viz_dir, exist_ok=True)
 
-# Generate word importance plots
-print("Creating SHAP word importance visualizations...")
-for i, result in enumerate(shap_results):
+# Generate visualizations for selected examples
+print("Creating SHAP visualizations for selected examples...")
+for i, idx in enumerate(selected_indices):
+    result = shap_results[idx]
+    
     if result['word_importance']:
         true_label = 'Offensive' if result['true_label'] == 1 else 'Neutral'
         pred_label = 'Offensive' if result['predicted_label'] == 1 else 'Neutral'
         
-        filename = os.path.join(viz_dir, f"shap_word_importance_example_{i+1}.png")
+        filename = os.path.join(viz_dir, f"shap_example_{i+1}.png")
         
         success = create_shap_word_plot(
             result['word_importance'],
@@ -645,18 +648,21 @@ for i, result in enumerate(shap_results):
         )
         
         if success:
-            print(f"  ✓ Created word importance plot for example {i+1}")
+            print(f"  ✓ Created visualization {i+1}: {filename}")
+            print(f"    Text: {result['text'][:80]}...")
+            print(f"    True: {true_label}, Predicted: {pred_label}")
         else:
-            print(f"  ✗ Failed to create plot for example {i+1}")
+            print(f"  ✗ Failed to create visualization {i+1}")
 
-print(f"Word importance visualizations saved to: {viz_dir}")
+print(f"Visualizations saved to: {viz_dir}")
 print()
 
-# SHAP RESULTS IN LIME-COMPARABLE FORMAT
-print("SHAP RESULTS IN LIME-COMPARABLE FORMAT:")
+# Display the 3 selected examples
+print("SELECTED EXAMPLES FOR ANALYSIS:")
 print("=" * 60)
 
-for i, result in enumerate(shap_results):
+for i, idx in enumerate(selected_indices):
+    result = shap_results[idx]
     print(f"\nExample {i+1}:")
     print(f"Text: {result['text']}")
     print(f"True Label: {'Offensive' if result['true_label'] == 1 else 'Neutral'}")
@@ -664,140 +670,222 @@ for i, result in enumerate(shap_results):
     print(f"Confidence: {result['confidence']:.3f}")
     print(f"Correct: {result['correct_prediction']}")
     
-    print(f"Top words influencing decision:")
+    print(f"Top 8 important words:")
     for j, word_info in enumerate(result['word_importance'][:8]):
         direction = "OFFENSIVE" if word_info['importance'] > 0 else "NEUTRAL"
         print(f"  {j+1}. '{word_info['word']}': {word_info['importance']:.3f} → {direction}")
     print("-" * 60)
 
 
-## ---- 4.6 Saving SHAP results ----
 
-print("\n4.6 SAVING SHAP RESULTS")
+## ---- 4.6 Computing evaluation metrics ----
+
+print("\n4.6 COMPUTING EVALUATION METRICS")
 print()
 
-# Prepare results for saving
-print("Preparing results for saving...")
+# Load human rationales (keep the same function as before)
+def load_human_rationales():
+    """Load human rationales from the HateBRXplain dataset"""
+    try:
+        dataset_file = "/fp/projects01/ec35/homes/ec-roskvatb/deepxplain/data/HateBRXplain_no_emojis.json"
+        
+        with open(dataset_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        human_rationales = {}
+        
+        for item in data:
+            text = item['text']
+            if item['label'] == 1:  # Only offensive samples have rationales
+                rationale_words = []
+                
+                if 'human_rationale_1' in item and item['human_rationale_1']:
+                    rationale_1 = item['human_rationale_1'].split(';')
+                    rationale_words.extend([r.strip() for r in rationale_1 if r.strip()])
+                
+                if 'human_rationale_2' in item and item['human_rationale_2']:
+                    rationale_2 = item['human_rationale_2'].split(';')
+                    rationale_words.extend([r.strip() for r in rationale_2 if r.strip()])
+                
+                all_rationale_words = set()
+                for rationale in rationale_words:
+                    words = rationale.lower().split()
+                    all_rationale_words.update(words)
+                
+                if all_rationale_words:
+                    human_rationales[text] = list(all_rationale_words)
+        
+        return human_rationales
+    except Exception as e:
+        print(f"Error loading human rationales: {e}")
+        return {}
 
-# Create comprehensive results dictionary
-results_dict = {
-    'analysis_info': {
-        'timestamp': datetime.now().isoformat(),
-        'model_name': MODEL_NAME,
-        'dataset_name': DATASET_NAME,
-        'max_length': MAX_LENGTH,
-        'batch_size': BATCH_SIZE,
-        'background_size': len(background_texts),
-        'examples_analyzed': len(shap_results),
-        'accuracy': accuracy,
-        'device': str(device)
-    },
-    'configuration': {
-        'trained_model_path': TRAINED_MODEL_PATH,
-        'preprocessed_data_path': PREPROCESSED_DATA_PATH,
-        'output_directory': OUTPUT_DIR,
-        'examples_per_class': examples_per_class,
-        'background_per_class': per_class
-    },
-    'results': []
-}
+print("Loading human rationales...")
+human_rationales = load_human_rationales()
+print(f"Loaded human rationales for {len(human_rationales)} offensive examples")
 
+print("Computing evaluation metrics on all offensive examples...")
 
-# Process and save results with proper type conversion
-for i, result in enumerate(shap_results):
-    result_dict = {
-        'example_id': i + 1,
-        'text': result['text'],
-        'true_label': int(result['true_label']),
-        'predicted_label': int(result['predicted_label']),
-        'prediction_probs': [float(p) for p in result['prediction_probs']],
-        'confidence': float(result['confidence']),
-        'correct_prediction': bool(result['correct_prediction']),
-        'word_importance': [
-            {
-                'word': word_info['word'],
-                'importance': float(word_info['importance']),
-                'position': int(word_info['position'])
-            }
-            for word_info in result['word_importance']
-        ],
-        'shap_info': {
-            'values_shape': str(result['shap_values'].values.shape),
-            'base_values': [float(x) for x in result['shap_values'].base_values],
-            'data_preview': str(result['shap_values'].data)[:200]
+# Compute metrics (simplified versions)
+def compute_all_metrics(shap_results, human_rationales, predict_fn):
+    """Compute all metrics in one efficient pass"""
+    
+    # Initialize metric lists
+    comprehensiveness_scores = []
+    sufficiency_scores = []
+    precisions = []
+    recalls = []
+    f1_scores = []
+    iou_f1_scores = []
+    overlap_percentages = []
+    agreement_count = 0
+    coverage_count = 0
+    
+    print(f"Computing metrics for {len(shap_results)} examples...")
+    
+    for i, result in enumerate(shap_results):
+        text = result['text']
+        
+        # Progress indicator
+        if (i + 1) % 50 == 0:
+            print(f"  Processed {i+1}/{len(shap_results)} examples...")
+        
+        try:
+            # --- Faithfulness Metrics ---
+            original_prob = result['prediction_probs'][1]
+            important_words = [w['word'] for w in result['word_importance'][:5] if w['importance'] > 0]
+            
+            if important_words:
+                # Comprehensiveness
+                text_without_important = text
+                for word in important_words:
+                    text_without_important = text_without_important.replace(word, '')
+                text_without_important = ' '.join(text_without_important.split())
+                
+                if text_without_important.strip():
+                    new_prob = predict_fn([text_without_important])[0][1]
+                    comprehensiveness_scores.append(original_prob - new_prob)
+                
+                # Sufficiency
+                important_text = ' '.join(important_words)
+                if important_text.strip():
+                    sufficient_prob = predict_fn([important_text])[0][1]
+                    sufficiency = sufficient_prob / original_prob if original_prob > 0 else 0
+                    sufficiency_scores.append(sufficiency)
+            
+            # --- Plausibility Metrics ---
+            if text in human_rationales:
+                coverage_count += 1
+                
+                shap_words = set(w['word'].lower() for w in result['word_importance'][:10] if w['importance'] > 0)
+                human_words = set(human_rationales[text])
+                
+                if len(shap_words) > 0 and len(human_words) > 0:
+                    intersection = shap_words & human_words
+                    union = shap_words | human_words
+                    
+                    precision = len(intersection) / len(shap_words)
+                    recall = len(intersection) / len(human_words)
+                    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+                    iou_f1 = len(intersection) / len(union)
+                    overlap_percentage = len(intersection) / len(shap_words) * 100
+                    
+                    precisions.append(precision)
+                    recalls.append(recall)
+                    f1_scores.append(f1)
+                    iou_f1_scores.append(iou_f1)
+                    overlap_percentages.append(overlap_percentage)
+                    
+                    if len(intersection) > 0:
+                        agreement_count += 1
+                        
+        except Exception as e:
+            print(f"Error processing example {i+1}: {e}")
+            continue
+    
+    return {
+        'faithfulness': {
+            'comprehensiveness': {'mean': np.mean(comprehensiveness_scores), 'std': np.std(comprehensiveness_scores)},
+            'sufficiency': {'mean': np.mean(sufficiency_scores), 'std': np.std(sufficiency_scores)}
+        },
+        'plausibility': {
+            'precision': {'mean': np.mean(precisions), 'std': np.std(precisions)},
+            'recall': {'mean': np.mean(recalls), 'std': np.std(recalls)},
+            'f1': {'mean': np.mean(f1_scores), 'std': np.std(f1_scores)},
+            'iou_f1': {'mean': np.mean(iou_f1_scores), 'std': np.std(iou_f1_scores)}
+        },
+        'coverage': {
+            'agreement_rate': agreement_count / coverage_count if coverage_count > 0 else 0,
+            'coverage': coverage_count / len(shap_results),
+            'average_overlap': {'mean': np.mean(overlap_percentages), 'std': np.std(overlap_percentages)}
         }
     }
-    results_dict['results'].append(result_dict)
 
+# Compute all metrics
+all_metrics = compute_all_metrics(shap_results, human_rationales, predict_fn)
 
-# Save results as JSON
-json_filename = f"{OUTPUT_DIR}/shap_results.json"
-try:
-    with open(json_filename, 'w', encoding='utf-8') as f:
-        json.dump(results_dict, f, ensure_ascii=False, indent=2)
-    print(f"✓ Results saved to: {json_filename}")
-except Exception as e:
-    print(f"✗ Error saving JSON results: {e}")
+# Calculate basic statistics
+total_samples = len(shap_results)
+accuracy = sum(1 for r in shap_results if r['correct_prediction']) / total_samples
 
-# Save raw SHAP values using pickle
-pickle_filename = f"{OUTPUT_DIR}/shap_values.pkl"
-try:
-    with open(pickle_filename, 'wb') as f:
-        pickle.dump(shap_results, f)
-    print(f"✓ Raw SHAP values saved to: {pickle_filename}")
-except Exception as e:
-    print(f"✗ Error saving pickle results: {e}")
-
-# Create summary report
-print("Creating summary report...")
-report_filename = f"{OUTPUT_DIR}/shap_analysis_report.txt"
-
-try:
-    with open(report_filename, 'w', encoding='utf-8') as f:
-        f.write("SHAP ANALYSIS REPORT\n")
-        f.write("=" * 50 + "\n\n")
-        
-        f.write(f"Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"Model: {MODEL_NAME}\n")
-        f.write(f"Dataset: {DATASET_NAME}\n")
-        f.write(f"Max Length: {MAX_LENGTH} tokens\n")
-        f.write(f"Device: {device}\n\n")
-        
-        f.write("ANALYSIS RESULTS\n")
-        f.write("-" * 30 + "\n")
-        f.write(f"Examples Analyzed: {len(shap_results)}\n")
-        f.write(f"Correct Predictions: {correct_predictions}\n")
-        f.write(f"Accuracy: {accuracy:.3f}\n\n")
-        
-        f.write("DETAILED RESULTS\n")
-        f.write("-" * 30 + "\n")
-        for i, result in enumerate(shap_results):
-            f.write(f"Example {i+1}:\n")
-            f.write(f"  Text: {result['text'][:100]}...\n")
-            f.write(f"  True: {'Offensive' if result['true_label'] == 1 else 'Neutral'}\n")
-            f.write(f"  Predicted: {'Offensive' if result['predicted_label'] == 1 else 'Neutral'}\n")
-            f.write(f"  Confidence: {result['confidence']:.3f}\n")
-            f.write(f"  Correct: {result['correct_prediction']}\n\n")
-    
-    print(f"✓ Summary report saved to: {report_filename}")
-    
-except Exception as e:
-    print(f"✗ Error creating summary report: {e}")
-
+# Print results
+print("\nSHAP EVALUATION RESULTS")
+print("=" * 60)
+print(f"Model: {MODEL_NAME}")
+print(f"Dataset: {DATASET_NAME}")
+print(f"Total offensive samples analyzed: {total_samples}")
+print(f"Accuracy: {accuracy:.3f}")
 print()
-print("SHAP ANALYSIS COMPLETE!")
-print("=" * 50)
+
+print("FAITHFULNESS METRICS:")
+print(f"  Comprehensiveness: {all_metrics['faithfulness']['comprehensiveness']['mean']:.3f} ± {all_metrics['faithfulness']['comprehensiveness']['std']:.3f}")
+print(f"  Sufficiency: {all_metrics['faithfulness']['sufficiency']['mean']:.3f} ± {all_metrics['faithfulness']['sufficiency']['std']:.3f}")
 print()
-print("Files created:")
-print(f"  - JSON results: {json_filename}")
-print(f"  - Raw SHAP values: {pickle_filename}")
-print(f"  - Summary report: {report_filename}")
-print(f"  - Visualizations: {viz_dir}")
+
+print("PLAUSIBILITY METRICS:")
+print(f"  Precision: {all_metrics['plausibility']['precision']['mean']:.3f} ± {all_metrics['plausibility']['precision']['std']:.3f}")
+print(f"  Recall: {all_metrics['plausibility']['recall']['mean']:.3f} ± {all_metrics['plausibility']['recall']['std']:.3f}")
+print(f"  F1: {all_metrics['plausibility']['f1']['mean']:.3f} ± {all_metrics['plausibility']['f1']['std']:.3f}")
+print(f"  IOU F1: {all_metrics['plausibility']['iou_f1']['mean']:.3f} ± {all_metrics['plausibility']['iou_f1']['std']:.3f}")
 print()
-print("Next steps:")
-print("  1. Review the summary report for key findings")
-print("  2. Examine visualizations to understand feature importance")
-print("  3. Compare with LIME results for comprehensive analysis")
-print("  4. Consider analyzing more examples if needed")
+
+print("COVERAGE METRICS:")
+print(f"  Agreement rate: {all_metrics['coverage']['agreement_rate']:.1%}")
+print(f"  Coverage: {all_metrics['coverage']['coverage']:.1%}")
+print(f"  Average overlap: {all_metrics['coverage']['average_overlap']['mean']:.1f}% ± {all_metrics['coverage']['average_overlap']['std']:.1f}%")
 print()
-print("For questions or issues, check the Fox cluster logs and GPU memory usage.")
+
+# Comparison table format
+print("COMPARISON TABLE FORMAT:")
+print("-" * 100)
+print("Model | Comprehensiveness | Sufficiency | Precision | Recall | F1 | IOU F1 | Agreement | Coverage | Overlap")
+print("-" * 100)
+print(f"SHAP-bert-base-uncased | "
+      f"{all_metrics['faithfulness']['comprehensiveness']['mean']:.3f}±{all_metrics['faithfulness']['comprehensiveness']['std']:.3f} | "
+      f"{all_metrics['faithfulness']['sufficiency']['mean']:.3f}±{all_metrics['faithfulness']['sufficiency']['std']:.3f} | "
+      f"{all_metrics['plausibility']['precision']['mean']:.3f}±{all_metrics['plausibility']['precision']['std']:.3f} | "
+      f"{all_metrics['plausibility']['recall']['mean']:.3f}±{all_metrics['plausibility']['recall']['std']:.3f} | "
+      f"{all_metrics['plausibility']['f1']['mean']:.3f}±{all_metrics['plausibility']['f1']['std']:.3f} | "
+      f"{all_metrics['plausibility']['iou_f1']['mean']:.3f}±{all_metrics['plausibility']['iou_f1']['std']:.3f} | "
+      f"{all_metrics['coverage']['agreement_rate']:.1%} | "
+      f"{all_metrics['coverage']['coverage']:.1%} | "
+      f"{all_metrics['coverage']['average_overlap']['mean']:.1f}%±{all_metrics['coverage']['average_overlap']['std']:.1f}%")
+print("-" * 100)
+
+# Save results
+results_filename = f"{OUTPUT_DIR}/shap_evaluation_results.json"
+final_results = {
+    'model_info': {
+        'model_name': MODEL_NAME,
+        'total_samples': total_samples,
+        'accuracy': accuracy
+    },
+    'metrics': all_metrics
+}
+
+with open(results_filename, 'w') as f:
+    json.dump(final_results, f, indent=2)
+
+print(f"✓ Evaluation results saved to: {results_filename}")
+print("\nSHAP EVALUATION COMPLETE!")
+print("These metrics can now be directly compared with your LIME results!")
