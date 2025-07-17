@@ -44,9 +44,18 @@
 **Emoji removal**
 Emoji characters were replaced with whitespace and multiple consecutive spaces were normalized to single spaces to maintain text structure while ensuring SHAP tokenization compatibility.
 
+**Bias**
+- Machine learning models, like anything that is man-made, can be susceptible to bias in a number of ways
+- Some types of bias include reporting bias (is our dataset representative?), 
+- **Historical bias:** I’m not sure if this is relevant, but a number of articles claim that we have seen an increase in hate speech online over the past decade. Purely anecdotal: I was a teenager in the early/mid 2000s and spent a great deal of time online, I’m not quite sure hate speech has reached a new level since then. Rather, I think it’s a persistent problem we need to combat, and that we now have a chance to develop the necessary tools. While technology is advancing at a rapid speed, we also have protection by the law. GDPR states that we have the right to meaningful information about the logic involved in the existence of automated decision-making (General Data Protection Regulation, 2016, art. 15(1)(h)). What we want to achieve is both hate speech detection without discriminating against minorities, and also the creation of valid rationales to explain the process of the decision making, to protect the individual’s right to understand what is happening.
+
+
+
 ## Hate speech
 
 **What is the definition of hate speech?** Is there a difference between hate speech and offensive language?
+
+There is no single, consistent hate speech definition across the board. Article 20, paragraph 2 of the International Covenant on Civil and Political Rights (ICCPR) states that “any advocacy of national, racial or religious hatred that constitutes incitement to discrimination, hostility or violence shall be prohibited by law. When we are working with hate speech detection, it is important to discriminate between what is hate speech and what is simply offensive language. Offensive language can refer to any expression, such as profanity, insults, or vulgarity, that is likely to cause offense or discomfort, regardless of intent or target. Unlike hate speech, it does not necessarily involve attacks on individuals or groups based on intrinsic characteristics, nor does it inherently aim to incite hatred or discrimination. 
 
 Introducing the HateXplain dataset, with a mission to reduce unintended bias toward communities who are targets of hate speech, by incorporating human rationales behind hate speech classification (Mathew et al., 2021)
 
@@ -86,18 +95,22 @@ It is also important to note that hate speech is heavily dependent on the contex
 
 ## Bibliography
 
-Devlin, J., Chang, M.-W., Lee, K., & Toutanova, K. (2018). *BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding* (Version 2). arXiv. https://doi.org/10.48550/ARXIV.1810.04805
+Devlin, J., Chang, M.-W., Lee, K., & Toutanova, K. (2018). BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding (Version 2). arXiv. https://doi.org/10.48550/ARXIV.1810.04805
 
-DeYoung, J., Jain, S., Rajani, N. F., Lehman, E., Xiong, C., Socher, R., & Wallace, B. C. (2020). *ERASER: A Benchmark to Evaluate Rationalized NLP Models* (Version 2). arXiv. https://doi.org/10.48550/ARXIV.1911.03429
+DeYoung, J., Jain, S., Rajani, N. F., Lehman, E., Xiong, C., Socher, R., & Wallace, B. C. (2020). ERASER: A Benchmark to Evaluate Rationalized NLP Models (Version 2). arXiv. https://doi.org/10.48550/ARXIV.1911.03429
 
-Gongane, V. U., Munot, M. V., & Anuse, A. D. (2024). A survey of explainable AI techniques for detection of fake news and hate speech on social media platforms. *Journal of Computational Social Science*, *7*(1), 587--623. https://doi.org/10.1007/s42001-024-00248-9
+General Data Protection Regulation, Regulation (EU) 2016/679 of the European Parliament and of the Council of 27 April 2016 on the protection of natural persons with regard to the processing of personal data and on the free movement of such data, and repealing Directive 95/46/EC (General Data Protection Regulation). (2016). https://gdpr-info.eu/
 
-Jacovi, A., & Goldberg, Y. (2020). *Towards Faithfully Interpretable NLP Systems: How should we define and evaluate faithfulness?* (Version 3). arXiv. https://doi.org/10.48550/ARXIV.2004.03685
+Gongane, V. U., Munot, M. V., & Anuse, A. D. (2024). A survey of explainable AI techniques for detection of fake news and hate speech on social media platforms. Journal of Computational Social Science, 7(1), 587–623. https://doi.org/10.1007/s42001-024-00248-9
 
-Mathew, B., Saha, P., Yimam, S. M., Biemann, C., Goyal, P., & Muhherjee, A. (2021). *HateXplain: A Benchmark Dataset for Explainable Hate Speech Detection*. 14867--14875. https://github.com/punyajoy/HateXplain
+International Covenant on Civil and Political Rights. (1966, December 16). United Nations. https://www.ohchr.org/en/instruments-mechanisms/instruments/international-covenant-civil-and-political-rights
 
-Salles, I., Vargas, F., & Benevenuto, F. (2025). HateBRXplain: A Benchmark Dataset with Human-Annotated Rationales for Explainable Hate Speech Detection in Brazilian Portuguese. *Proceedings of the 31st International Conference on Computational Linguistics*, 6659--6669.
+Jacovi, A., & Goldberg, Y. (2020). Towards Faithfully Interpretable NLP Systems: How should we define and evaluate faithfulness? (Version 3). arXiv. https://doi.org/10.48550/ARXIV.2004.03685
 
-Vargas, F. A., Carvalho, I., de Góes, F. R., Benevenuto, F., & Pardo, T. A. S. (2022). *HateBR: A Large Expert Annotated Corpus of Brazilian Instagram Comments for Offensive Language and Hate Speech Detection*. https://doi.org/10.48550/ARXIV.2103.14972
+Mathew, B., Saha, P., Yimam, S. M., Biemann, C., Goyal, P., & Muhherjee, A. (2021). HateXplain: A Benchmark Dataset for Explainable Hate Speech Detection. 14867–14875. https://github.com/punyajoy/HateXplain
 
-Vargas, F., Carvalho, I., Pardo, T. A. S., & Benevenuto, F. (2025). Context-aware and expert data resources for Brazilian Portuguese hate speech detection. *Natural Language Processing*, *31*(2), 435--456. https://doi.org/10.1017/nlp.2024.18
+Salles, I., Vargas, F., & Benevenuto, F. (2025). HateBRXplain: A Benchmark Dataset with Human-Annotated Rationales  for Explainable Hate Speech Detection in Brazilian Portuguese. Proceedings of the 31st International Conference on Computational Linguistics, 6659–6669.
+
+Vargas, F. A., Carvalho, I., de Góes, F. R., Benevenuto, F., & Pardo, T. A. S. (2022). HateBR: A Large Expert Annotated Corpus of Brazilian Instagram Comments for Offensive Language and Hate Speech Detection. https://doi.org/10.48550/ARXIV.2103.14972
+
+Vargas, F., Carvalho, I., Pardo, T. A. S., & Benevenuto, F. (2025). Context-aware and expert data resources for Brazilian Portuguese hate speech detection. Natural Language Processing, 31(2), 435–456. https://doi.org/10.1017/nlp.2024.18
