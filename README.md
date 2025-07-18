@@ -9,9 +9,11 @@ We are exploring how LIME and SHAP can help explain machine learning models that
 
 ## Files
 - `deepxplain-notes.md` - Research notes, definitions, and reflections
-- `documentation_with_emoji.csv` - Analysis results and model outputs for original data
-- `documentation_no_emoji.csv` - Analysis results and model outputs for cleaned data
+  
+- `sentiment_analysis_with_emoji.csv` - Analysis results and model outputs for original data
+- `sentiment_analysis_no_emoji.csv` - Analysis results and model outputs for cleaned data
 - `LIME_comparison table.csv` - Results from LIME analyses
+  
 - `sentiment_analysis_preproc.py` - Code for preprocessing the dataset before sentiment analysis
 - `foxready_sentiment_analysis_training.py` - Code for sentiment analysis
 - `Limeshap.py` - Code for implementing LIME
