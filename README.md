@@ -14,10 +14,10 @@ We are exploring how LIME and SHAP can help explain machine learning models that
 - `sentiment_analysis_no_emoji.csv` - Analysis results and model outputs for cleaned data
 - `LIME_comparison table.csv` - Results from LIME analyses
   
+- `clear_emojis_from_data.py` - Cleans the orginial dataset for emojis, necessary for SHAP
 - `sentiment_analysis_preproc.py` - Code for preprocessing the dataset before sentiment analysis
 - `foxready_sentiment_analysis_training.py` - Code for sentiment analysis
 - `Limeshap.py` - Code for implementing LIME
-- `clear_emojis_from_data.py` - Cleans the orginial dataset for emojis, necessary for SHAP
 - `shapanalysis.py` - Code for implementing SHAP
 
 
