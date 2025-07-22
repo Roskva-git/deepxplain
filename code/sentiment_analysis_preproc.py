@@ -4,7 +4,7 @@
 
 # Written by: Røskva
 # Created: 01. July 2025
-# Updated: 03. July 2025
+# Updated: 22. July 2025
 
 # 1. PREPROCESSING STEPS
 ### 1.0 Setting up environment and configuration
@@ -30,6 +30,7 @@ import sklearn
 import pickle
 import os
 import json
+import re
 
 from datetime import datetime
 from torch.utils.data import Dataset, DataLoader
@@ -42,8 +43,8 @@ import os
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
 # Dataset configuration - modify for hatespeech dataset
-DATASET_NAME = "HateBRXplain_cleaned"           
-MODEL_NAME = 'adalbertojunior/distilbert-portuguese-cased'
+DATASET_NAME = "HateBRXplain_no_emojis.json"           
+MODEL_NAME = 'Nelci/bertimbau_hate_speech'
 MAX_LENGTH = 512
 BATCH_SIZE = 16                  # Change from 8
 NUM_WORKERS = 0                 # Change from 0
@@ -53,7 +54,7 @@ RANDOM_STATE = 42
 # Versioned output directory - FOR FOX CLUSTER
 timestamp = datetime.now().strftime("%Y%m%d_%H%M")
 BASE_OUTPUT_DIR = "/fp/projects01/ec35/homes/ec-roskvatb/deepxplain/data/preprocessed_data" # Change this as needed
-OUTPUT_DIR = os.path.join(BASE_OUTPUT_DIR, f"{DATASET_NAME}_{MODEL_NAME.replace('/', '_')}_maxlen{MAX_LENGTH}_{timestamp}")
+OUTPUT_DIR = os.path.join(BASE_OUTPUT_DIR, f"{DATASET_NAME}_{MODEL_NAME.replace('/', '_')}_maxlen{MAX_LENGTH}_{timestamp}_rationale_supervised")
 
 # Create output directory if it doesn't exist
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -94,7 +95,7 @@ print()
 
 # Loading dataset
 print(f"Loading {DATASET_NAME} dataset...")
-dataset_path = "/fp/projects01/ec35/homes/ec-roskvatb/deepxplain/data/dataset/HateBRXplain_cleaned.json"
+dataset_path = "/fp/projects01/ec35/homes/ec-roskvatb/deepxplain/data/dataset/HateBRXplain_no_emojis.json"
 
 with open(dataset_path, 'r', encoding='utf-8') as f:
     raw_data = json.load(f)
@@ -105,6 +106,60 @@ print(f"Total examples: {len(raw_data)}")
 # Extracting texts and labels from the dataset
 texts = [item["comment"] for item in raw_data]
 labels = [int(item["offensive label"]) for item in raw_data] # Converts 1.0 -> 1, 0.0 -> 0
+
+# Extracting rationales from the dataset
+rationales_1 = [item.get("rationales annotator 1", "N/A") for item in raw_data]
+rationales_2 = [item.get("rationales annotator 2", "N/A") for item in raw_data]
+
+print(f"Rationales extracted:")
+print(f"  Annotator 1 rationales: {len(rationales_1)}")
+print(f"  Annotator 2 rationales: {len(rationales_2)}")
+
+
+def create_rationale_labels(text, rationale_1, rationale_2, tokenizer, max_length=512):
+    """Map human rationales to token-level attention labels"""
+    
+    # Tokenize the text to get the exact tokens BERT will see
+    encoding = tokenizer(
+        text,
+        truncation=True,
+        padding='max_length',
+        max_length=max_length,
+        return_tensors='pt'
+    )
+    
+    tokens = tokenizer.convert_ids_to_tokens(encoding['input_ids'][0])
+    rationale_labels = [0] * len(tokens)  # 0 = not important
+    
+    # Extract human rationale words
+    human_words = set()
+    if rationale_1 and rationale_1 != 'N/A':
+        words = re.findall(r'\b\w+\b', rationale_1.lower())
+        human_words.update(words)
+    if rationale_2 and rationale_2 != 'N/A':
+        words = re.findall(r'\b\w+\b', rationale_2.lower())
+        human_words.update(words)
+    
+    # Map human words to BERT tokens
+    for i, token in enumerate(tokens):
+        if token in ['[CLS]', '[SEP]', '[PAD]']:
+            continue
+        
+        # Clean token (remove ## for subwords)
+        clean_token = token.replace('##', '').lower()
+        
+        # If this token matches any human rationale word
+        if clean_token in human_words:
+            rationale_labels[i] = 1
+        
+        # Also check if token is part of a rationale word
+        for human_word in human_words:
+            if clean_token in human_word or human_word in clean_token:
+                rationale_labels[i] = 1
+    
+    return rationale_labels
+
+print("Rationale mapping function defined!")
 
 
 # Look at an example
@@ -242,14 +297,15 @@ print()
 print("\n1.5 CREATING THE DATASET CLASS")
 print()
 
-class TextClassificationDataset(Dataset):
+class RationaleTextDataset(Dataset):
     """
-    Generic Dataset class for text classification.
-    Handles tokenization and encoding for any text classification task.
+    Dataset class with rationale supervision for text classification.
     """
-    def __init__(self, texts, labels, tokenizer, max_length=512):
+    def __init__(self, texts, labels, rationales_1, rationales_2, tokenizer, max_length=512):
         self.texts = texts
         self.labels = labels
+        self.rationales_1 = rationales_1
+        self.rationales_2 = rationales_2
         self.tokenizer = tokenizer
         self.max_length = max_length
     
@@ -257,23 +313,32 @@ class TextClassificationDataset(Dataset):
         return len(self.texts)
     
     def __getitem__(self, idx):
-        # Get the text and label for this index
         text = str(self.texts[idx])
         label = self.labels[idx]
         
-        # Tokenize the text
+        # Standard tokenization
         encoding = self.tokenizer(
             text,
-            truncation=True,      # Cutting off if too long
-            padding='max_length', # Padding if too short
+            truncation=True,
+            padding='max_length',
             max_length=self.max_length,
-            return_tensors='pt'   # Return PyTorch tensors
+            return_tensors='pt'
+        )
+        
+        # Create rationale labels
+        rationale_labels = create_rationale_labels(
+            text, 
+            self.rationales_1[idx], 
+            self.rationales_2[idx], 
+            self.tokenizer, 
+            self.max_length
         )
         
         return {
             'input_ids': encoding['input_ids'].flatten(),
             'attention_mask': encoding['attention_mask'].flatten(),
-            'labels': torch.tensor(label, dtype=torch.long)
+            'labels': torch.tensor(label, dtype=torch.long),
+            'rationale_labels': torch.tensor(rationale_labels, dtype=torch.float)
         }
 
 print("Dataset class defined!")
@@ -293,9 +358,25 @@ print()
 print("\n1.6 CREATING TRAINING, VALIDATION AND TEST DATASETS")
 print( )
 
-train_dataset = TextClassificationDataset(train_texts, train_labels, tokenizer, MAX_LENGTH)
-val_dataset = TextClassificationDataset(val_texts, val_labels, tokenizer, MAX_LENGTH)
-test_dataset = TextClassificationDataset(test_texts, test_labels, tokenizer, MAX_LENGTH)
+# Update the splits to include rationales
+train_texts, temp_texts, train_labels, temp_labels, train_rat1, temp_rat1, train_rat2, temp_rat2 = train_test_split(
+    texts, labels, rationales_1, rationales_2,
+    test_size=TEST_SIZE,
+    random_state=RANDOM_STATE,
+    stratify=labels
+)
+
+val_texts, test_texts, val_labels, test_labels, val_rat1, test_rat1, val_rat2, test_rat2 = train_test_split(
+    temp_texts, temp_labels, temp_rat1, temp_rat2,
+    test_size=0.5,
+    random_state=RANDOM_STATE,
+    stratify=temp_labels
+)
+
+# Create datasets with rationales
+train_dataset = RationaleTextDataset(train_texts, train_labels, train_rat1, train_rat2, tokenizer, MAX_LENGTH)
+val_dataset = RationaleTextDataset(val_texts, val_labels, val_rat1, val_rat2, tokenizer, MAX_LENGTH)
+test_dataset = RationaleTextDataset(test_texts, test_labels, test_rat1, test_rat2, tokenizer, MAX_LENGTH)
 
 print(f"Datasets created!")
 print(f"Training dataset: {len(train_dataset)} samples")
