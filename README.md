@@ -16,8 +16,8 @@ We are exploring how LIME and SHAP can help explain machine learning models that
   
 - `clear_emojis_from_data.py` - Cleans the orginial dataset for emojis, necessary for SHAP
 - `sentiment_analysis_preproc.py` - Code for preprocessing the dataset before sentiment analysis
-- `foxready_sentiment_analysis_training.py` - Code for sentiment analysis
-- `Limeshap.py` - Code for implementing LIME
+- `sentiment_analysis_training.py` - Code for sentiment analysis
+- `limeanalysis.py` - Code for implementing LIME
 - `shapanalysis.py` - Code for implementing SHAP
 
 
