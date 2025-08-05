@@ -22,4 +22,6 @@ We are exploring how LIME and SHAP can help explain machine learning models that
 
 
 ## Current Status
-Successfully implemented LIME for model explanation. SHAP implementation currently in progress. 
+Successfully implemented LIME for model explanation. SHAP implementation currently in progress.
+
+## Paper submitted for review
