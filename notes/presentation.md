@@ -29,13 +29,15 @@ Attention: BERT has 144 heads focusing on different things, often unclear what m
 May focus heavily on identity terms (mention vs target), whereas we would focus more on context and intent
 
 ## Explainability
-GDPR article 15.1h:
+**GDPR article 15.1h:**
 The data subject shall have the right to obtain from the controller confirmation as to whether or not personal data concerning him or her are being processed, 
 and, where that is the case, access to the personal data and the following information:
 [a-g] h: the existence of automated decision-making, including profiling, referred to in Article 22(1) and (4) and, at least in those cases, 
 **meaningful information about the logic involved, as well as the significance and the envisaged consequences of such processing for the data subject**
 
-and article 22
+and **article 22:**
+1. The data subject shall have the right **not to be subject to a decision based solely on automated processing**, including profiling,
+   which produces legal effects concerning him or her or similarly significantly affects him or her.
 
 Accountability: Can verify decisions through explanations. 
 Trace decision back to causes and tell who/what is reponsible.
